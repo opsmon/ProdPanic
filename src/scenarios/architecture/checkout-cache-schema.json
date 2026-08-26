@@ -1,0 +1,668 @@
+{
+  "id": "arch-001",
+  "name": "Architecture: Checkout cache trap",
+  "difficulty": "architecture",
+  "duration": 1500,
+  "incidentNumber": "ARCH DRILL #001",
+  "incidentTitle": "Checkout теряет заказы после релиза",
+  "incidentText": "Интервьюер показывает схему продовой платформы. После релиза checkout-v4 часть пользователей получает 500 на оплате, часть заказов создаётся без payment intent. Нужно по схеме и evidence найти слабое место, безопасно восстановить поток и объяснить, как не повторить.",
+  "architecture": [
+    "CDN/WAF",
+    "API Gateway",
+    "Checkout API",
+    "Cart API",
+    "Payment Orchestrator",
+    "Redis sessions",
+    "PostgreSQL orders",
+    "Kafka checkout-events",
+    "Outbox worker",
+    "External PSP"
+  ],
+  "rootCause": "checkout-v4 читает idempotency ключи из нового Redis endpoint redis-analytics:6379, который предназначен для read-only аналитики и не доступен из checkout namespace; из-за таймаутов повторные payment requests проходят без корректной дедупликации.",
+  "rootCauseKeywords": [
+    "redis-analytics",
+    "idempotency",
+    "идемпотент",
+    "dedup",
+    "read-only",
+    "checkout-v4",
+    "timeout",
+    "redis",
+    "networkpolicy",
+    "endpoint"
+  ],
+  "businessContext": {
+    "headline": "Каждая минута деградации бьёт по оплатам, саппорту и ручной сверке заказов.",
+    "lossRubPerMinute": 125000,
+    "objective": "Восстановить checkout без потери идемпотентности и доказать, где нарушился контракт."
+  },
+  "diagram": {
+    "nodes": [
+      {
+        "id": "users",
+        "label": "Users",
+        "x": 8,
+        "y": 13,
+        "tone": "edge",
+        "sectionId": "edge",
+        "detail": "Mobile and web checkout traffic."
+      },
+      {
+        "id": "cdn",
+        "label": "CDN/WAF",
+        "x": 22,
+        "y": 13,
+        "tone": "edge",
+        "sectionId": "edge",
+        "detail": "No traffic blocks; 5xx generated behind gateway."
+      },
+      {
+        "id": "gateway",
+        "label": "API Gateway",
+        "x": 38,
+        "y": 13,
+        "tone": "edge",
+        "sectionId": "gateway",
+        "detail": "Routes /checkout and /payment to internal services."
+      },
+      {
+        "id": "auth",
+        "label": "Auth",
+        "x": 54,
+        "y": 7,
+        "tone": "control",
+        "sectionId": "auth",
+        "detail": "Token validation is healthy."
+      },
+      {
+        "id": "feature",
+        "label": "Feature Flags",
+        "x": 70,
+        "y": 7,
+        "tone": "control",
+        "sectionId": "flags",
+        "detail": "checkout-v4 flag was enabled for 50% of traffic."
+      },
+      {
+        "id": "checkout",
+        "label": "Checkout API v4",
+        "x": 54,
+        "y": 28,
+        "tone": "risk",
+        "sectionId": "checkout",
+        "detail": "New idempotency store dependency was added in v4."
+      },
+      {
+        "id": "cart",
+        "label": "Cart API",
+        "x": 38,
+        "y": 44,
+        "tone": "app",
+        "sectionId": "cart",
+        "detail": "Cart reads are healthy."
+      },
+      {
+        "id": "pricing",
+        "label": "Pricing API",
+        "x": 54,
+        "y": 48,
+        "tone": "app",
+        "sectionId": "pricing",
+        "detail": "Pricing latency is normal."
+      },
+      {
+        "id": "payment",
+        "label": "Payment Orchestrator",
+        "x": 73,
+        "y": 31,
+        "tone": "app",
+        "sectionId": "payment",
+        "detail": "Retries payment creation when checkout times out."
+      },
+      {
+        "id": "redis-session",
+        "label": "Redis sessions",
+        "x": 26,
+        "y": 70,
+        "tone": "data",
+        "sectionId": "redis",
+        "detail": "Primary session Redis is healthy and writable."
+      },
+      {
+        "id": "redis-analytics",
+        "label": "Redis analytics",
+        "x": 52,
+        "y": 73,
+        "tone": "risk",
+        "sectionId": "redis",
+        "detail": "Read-only analytics endpoint is not reachable from checkout namespace."
+      },
+      {
+        "id": "postgres",
+        "label": "PostgreSQL orders",
+        "x": 75,
+        "y": 70,
+        "tone": "data",
+        "sectionId": "postgres",
+        "detail": "Orders table receives partial checkout records."
+      },
+      {
+        "id": "kafka",
+        "label": "Kafka checkout-events",
+        "x": 36,
+        "y": 88,
+        "tone": "queue",
+        "sectionId": "kafka",
+        "detail": "Event lag is secondary to checkout failures."
+      },
+      {
+        "id": "outbox",
+        "label": "Outbox worker",
+        "x": 58,
+        "y": 90,
+        "tone": "queue",
+        "sectionId": "outbox",
+        "detail": "Publishes completed orders after DB commit."
+      },
+      {
+        "id": "psp",
+        "label": "External PSP",
+        "x": 91,
+        "y": 31,
+        "tone": "external",
+        "sectionId": "psp",
+        "detail": "Provider is healthy; duplicate attempts are rejected inconsistently."
+      },
+      {
+        "id": "observability",
+        "label": "Observability",
+        "x": 90,
+        "y": 62,
+        "tone": "control",
+        "sectionId": "observability",
+        "detail": "Dashboards show Redis timeout spike from checkout-v4."
+      }
+    ],
+    "links": [
+      {
+        "from": "users",
+        "to": "cdn",
+        "label": "HTTPS",
+        "status": "ok"
+      },
+      {
+        "from": "cdn",
+        "to": "gateway",
+        "label": "edge",
+        "status": "ok"
+      },
+      {
+        "from": "gateway",
+        "to": "checkout",
+        "label": "/checkout",
+        "status": "degraded"
+      },
+      {
+        "from": "gateway",
+        "to": "auth",
+        "label": "JWT",
+        "status": "ok"
+      },
+      {
+        "from": "feature",
+        "to": "checkout",
+        "label": "flag rollout",
+        "status": "degraded"
+      },
+      {
+        "from": "checkout",
+        "to": "cart",
+        "label": "cart read",
+        "status": "ok"
+      },
+      {
+        "from": "checkout",
+        "to": "pricing",
+        "label": "quote",
+        "status": "ok"
+      },
+      {
+        "from": "checkout",
+        "to": "payment",
+        "label": "create intent",
+        "status": "degraded"
+      },
+      {
+        "from": "payment",
+        "to": "psp",
+        "label": "PSP API",
+        "status": "ok"
+      },
+      {
+        "from": "checkout",
+        "to": "redis-session",
+        "label": "old sessions",
+        "status": "ok"
+      },
+      {
+        "from": "checkout",
+        "to": "redis-analytics",
+        "label": "new idempotency",
+        "status": "blocked"
+      },
+      {
+        "from": "checkout",
+        "to": "postgres",
+        "label": "orders",
+        "status": "degraded"
+      },
+      {
+        "from": "postgres",
+        "to": "outbox",
+        "label": "outbox",
+        "status": "unknown"
+      },
+      {
+        "from": "outbox",
+        "to": "kafka",
+        "label": "publish",
+        "status": "degraded"
+      },
+      {
+        "from": "observability",
+        "to": "checkout",
+        "label": "traces",
+        "status": "degraded"
+      }
+    ]
+  },
+  "initialState": {
+    "errorRate": 43,
+    "affectedUsers": 18600,
+    "serviceStatus": "DEGRADED"
+  },
+  "sections": [
+    {
+      "id": "edge",
+      "title": "Edge",
+      "description": "CDN/WAF and edge status for checkout traffic.",
+      "commands": [
+        "show edge errors",
+        "show waf events"
+      ]
+    },
+    {
+      "id": "gateway",
+      "title": "API Gateway",
+      "description": "Route-level errors and upstream mapping.",
+      "commands": [
+        "show gateway routes",
+        "show gateway 5xx"
+      ]
+    },
+    {
+      "id": "checkout",
+      "title": "Checkout API",
+      "description": "Checkout-v4 logs, release config and dependency checks.",
+      "commands": [
+        "show checkout logs",
+        "show checkout config",
+        "probe idempotency store",
+        "show rollout"
+      ]
+    },
+    {
+      "id": "flags",
+      "title": "Feature Flags",
+      "description": "Rollout history and active checkout flags.",
+      "commands": [
+        "show flags",
+        "show flag history"
+      ]
+    },
+    {
+      "id": "auth",
+      "title": "Auth",
+      "description": "Token validation and auth dependency health.",
+      "commands": [
+        "show auth health"
+      ]
+    },
+    {
+      "id": "cart",
+      "title": "Cart",
+      "description": "Cart reads and cart dependency health.",
+      "commands": [
+        "show cart health"
+      ]
+    },
+    {
+      "id": "pricing",
+      "title": "Pricing",
+      "description": "Pricing quotes and latency during checkout confirm.",
+      "commands": [
+        "show pricing health"
+      ]
+    },
+    {
+      "id": "payment",
+      "title": "Payment",
+      "description": "Payment orchestrator retries and PSP calls.",
+      "commands": [
+        "show payment retries",
+        "show psp status"
+      ]
+    },
+    {
+      "id": "redis",
+      "title": "Redis",
+      "description": "Session and analytics Redis endpoints.",
+      "commands": [
+        "show redis topology",
+        "probe redis-session",
+        "probe redis-analytics"
+      ]
+    },
+    {
+      "id": "postgres",
+      "title": "PostgreSQL",
+      "description": "Order writes, partial records and outbox rows.",
+      "commands": [
+        "show partial orders",
+        "show order locks"
+      ]
+    },
+    {
+      "id": "kafka",
+      "title": "Kafka",
+      "description": "Checkout event stream and consumer lag.",
+      "commands": [
+        "show kafka lag"
+      ]
+    },
+    {
+      "id": "outbox",
+      "title": "Outbox",
+      "description": "Order outbox rows waiting to publish checkout events.",
+      "commands": [
+        "show outbox queue"
+      ]
+    },
+    {
+      "id": "psp",
+      "title": "External PSP",
+      "description": "External payment provider availability and errors.",
+      "commands": [
+        "show psp status"
+      ]
+    },
+    {
+      "id": "observability",
+      "title": "Observability",
+      "description": "Traces and RED metrics across the checkout path.",
+      "commands": [
+        "show traces",
+        "show service map"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": "show edge errors",
+      "section": "edge",
+      "output": "CDN 5xx rate: 0.3%\nWAF blocks: baseline\nOrigin 5xx concentrated on /checkout/confirm.",
+      "scoreDelta": 20
+    },
+    {
+      "command": "show waf events",
+      "section": "edge",
+      "output": "No new WAF rule hits for checkout traffic. Bot and geo filters unchanged.",
+      "scoreDelta": 15
+    },
+    {
+      "command": "show gateway routes",
+      "section": "gateway",
+      "output": "/checkout/* -> checkout-api.prod.svc:8080\n/payment/* -> payment-orchestrator.prod.svc:8080\n/auth/* -> auth.prod.svc:8080",
+      "scoreDelta": 15
+    },
+    {
+      "command": "show gateway 5xx",
+      "section": "gateway",
+      "output": "15:06-15:18 /checkout/confirm 43% 5xx\n15:06-15:18 /cart 0.8% 5xx\n15:06-15:18 /payment 3.1% 5xx",
+      "discovery": "localized gateway 5xx to checkout",
+      "scoreDelta": 35
+    },
+    {
+      "command": "show checkout logs",
+      "section": "checkout",
+      "output": "ERROR idempotency store timeout key=pay_7fb redis=redis-analytics.prod:6379\nWARN payment retry without idempotency record order=ord_98221\nERROR checkout confirm failed after 2.5s dependency=idempotency-store",
+      "discovery": "checkout logs show idempotency redis timeout",
+      "scoreDelta": 60
+    },
+    {
+      "command": "show checkout config",
+      "section": "checkout",
+      "output": "VERSION=checkout-v4.8.1\nIDEMPOTENCY_BACKEND=redis\nIDEMPOTENCY_REDIS_URL=redis-analytics.prod.svc.cluster.local:6379\nSESSION_REDIS_URL=redis-session.prod.svc.cluster.local:6379",
+      "discovery": "found wrong idempotency redis endpoint",
+      "scoreDelta": 70
+    },
+    {
+      "command": "probe idempotency store",
+      "section": "checkout",
+      "output": "nc -vz redis-analytics.prod.svc.cluster.local 6379\nOperation timed out\n\nnc -vz redis-session.prod.svc.cluster.local 6379\nopen",
+      "discovery": "proved checkout cannot reach redis analytics",
+      "scoreDelta": 65
+    },
+    {
+      "command": "show rollout",
+      "section": "checkout",
+      "output": "15:00 checkout-v4 enabled for 10%\n15:06 checkout-v4 enabled for 50%\n15:07 checkout 5xx crosses alert threshold",
+      "discovery": "correlated rollout with incident",
+      "scoreDelta": 45
+    },
+    {
+      "command": "show flags",
+      "section": "flags",
+      "output": "checkout-v4: 50% users\nnew-idempotency-store: enabled when checkout-v4=true\nfallback-old-store: disabled",
+      "discovery": "checked feature flag state",
+      "scoreDelta": 40
+    },
+    {
+      "command": "show flag history",
+      "section": "flags",
+      "output": "14:58 create checkout-v4 rule\n15:00 rollout 10%\n15:06 rollout 50%\n15:07 alert checkout-confirm-5xx",
+      "scoreDelta": 25
+    },
+    {
+      "command": "show auth health",
+      "section": "auth",
+      "output": "Auth success rate: 99.96%\nToken validation p95: 38ms\nNo increase in 401/403 responses.",
+      "scoreDelta": 20
+    },
+    {
+      "command": "show cart health",
+      "section": "cart",
+      "output": "Cart API p95: 92ms\nCart read error rate: 0.8%\nNo dependency saturation.",
+      "scoreDelta": 20
+    },
+    {
+      "command": "show pricing health",
+      "section": "pricing",
+      "output": "Pricing quote p95: 110ms\nError rate: 0.4%\nNo price-cache misses above baseline.",
+      "scoreDelta": 20
+    },
+    {
+      "command": "show payment retries",
+      "section": "payment",
+      "output": "Retry rate: 22x baseline\nDuplicate payment intent attempts: 318 in 12m\nPSP errors: mostly idempotency mismatch from client retry.",
+      "discovery": "payment retries are symptom of checkout idempotency failure",
+      "scoreDelta": 40
+    },
+    {
+      "command": "show psp status",
+      "section": "payment",
+      "output": "PSP status page: operational\np95 latency: 180ms\nError budget normal outside duplicate idempotency keys.",
+      "scoreDelta": 20
+    },
+    {
+      "command": "show psp status",
+      "section": "psp",
+      "output": "Provider dashboard: operational\nNo global outage window.\nRejected attempts correlate with missing checkout idempotency records.",
+      "scoreDelta": 20
+    },
+    {
+      "command": "show redis topology",
+      "section": "redis",
+      "output": "redis-session: writable primary, prod namespace allowed\nredis-analytics: read replica for BI jobs, NetworkPolicy allows analytics namespace only",
+      "discovery": "redis analytics is not a checkout dependency",
+      "scoreDelta": 45
+    },
+    {
+      "command": "probe redis-session",
+      "section": "redis",
+      "output": "redis-session PING -> PONG\nrole: master\nwrites: accepted",
+      "scoreDelta": 20
+    },
+    {
+      "command": "probe redis-analytics",
+      "section": "redis",
+      "output": "from redis pod: PING -> PONG\nfrom checkout namespace: timeout by NetworkPolicy\nrole: replica, protected-mode yes",
+      "discovery": "redis analytics blocked from checkout namespace",
+      "scoreDelta": 55
+    },
+    {
+      "command": "show partial orders",
+      "section": "postgres",
+      "output": "orders created_without_payment_intent: 742 since 15:06\nstatus distribution: pending_payment_cleanup\nNo DB saturation or lock pileup.",
+      "discovery": "partial orders are downstream impact",
+      "scoreDelta": 35
+    },
+    {
+      "command": "show order locks",
+      "section": "postgres",
+      "output": "active locks: normal\nlong transactions: none\nconnection pool: 62/300",
+      "scoreDelta": 20
+    },
+    {
+      "command": "show kafka lag",
+      "section": "kafka",
+      "output": "checkout-events lag: +4,200 since 15:08\nConsumer health: ok\nLag follows missing outbox completion, not broker outage.",
+      "scoreDelta": 25
+    },
+    {
+      "command": "show outbox queue",
+      "section": "outbox",
+      "output": "pending checkout outbox rows: +4,117\noldest pending row: 15:08\nRows reference orders waiting for payment intent reconciliation.",
+      "scoreDelta": 25
+    },
+    {
+      "command": "show traces",
+      "section": "observability",
+      "output": "Trace checkout-confirm p95=2400ms\nSpan idempotency-store SETNX -> timeout 2500ms\nSpan cart, pricing, postgres under 120ms",
+      "discovery": "traces isolate idempotency store timeout",
+      "scoreDelta": 55
+    },
+    {
+      "command": "show service map",
+      "section": "observability",
+      "output": "Only checkout-api -> redis-analytics edge is red.\ncheckout-api -> cart/pricing/postgres edges green.\npayment-orchestrator -> PSP green.",
+      "scoreDelta": 35
+    }
+  ],
+  "actions": [
+    {
+      "id": "disable-checkout-v4",
+      "label": "Disable checkout-v4 flag",
+      "tone": "primary",
+      "output": "Feature flag checkout-v4 disabled. Traffic returned to old idempotency store.\nError rate: 43% -> 4% -> 0.6%.\nManual reconciliation queue created for partial orders.",
+      "scoreDelta": 130,
+      "restoreService": true,
+      "rootCauseDiscovery": "safe mitigation through feature flag"
+    },
+    {
+      "id": "fix-idempotency-endpoint",
+      "label": "Patch idempotency endpoint",
+      "tone": "primary",
+      "output": "Config patched to redis-session prod primary and rolled through canary.\nSETNX succeeds, duplicate payment attempts stop, checkout recovered.",
+      "scoreDelta": 150,
+      "restoreService": true,
+      "rootCauseDiscovery": "fixed wrong idempotency store endpoint"
+    },
+    {
+      "id": "restart-payment",
+      "label": "Restart payment service",
+      "tone": "danger",
+      "output": "Payment orchestrator restarted. PSP calls are still healthy; checkout still times out on idempotency store.",
+      "scoreDelta": -30,
+      "penaltyReason": "Restarted healthy downstream service"
+    },
+    {
+      "id": "scale-checkout",
+      "label": "Scale checkout pods",
+      "tone": "neutral",
+      "output": "Checkout scaled from 8 to 16 pods. More pods now wait on the same blocked Redis dependency; error rate unchanged.",
+      "scoreDelta": -10,
+      "penaltyReason": "Scaled before isolating dependency failure"
+    }
+  ],
+  "managerEvents": [
+    {
+      "at": 240,
+      "message": "Бизнес видит платежи без заказов. Что можно сказать прямо сейчас?"
+    },
+    {
+      "at": 720,
+      "message": "Финансы спрашивают, можно ли продолжать принимать оплаты или стопать checkout?"
+    }
+  ],
+  "interviewerQuestions": [
+    {
+      "at": 20,
+      "question": "С чего начнёшь на этой схеме: с edge, checkout, payment или базы, и почему?",
+      "idealKeywords": [
+        "impact",
+        "checkout",
+        "путь",
+        "5xx",
+        "recent change"
+      ],
+      "followUp": "Хороший ответ быстро локализует пользовательский путь и проверяет последнее изменение."
+    },
+    {
+      "at": 160,
+      "question": "Какие две связи на схеме ты проверишь перед рестартами?",
+      "idealKeywords": [
+        "checkout",
+        "redis",
+        "payment",
+        "postgres",
+        "traces"
+      ],
+      "followUp": "Интервьюеру важно услышать dependency checks, а не случайные рестарты."
+    },
+    {
+      "at": 360,
+      "question": "Почему PSP или PostgreSQL здесь могут быть симптомами, а не причиной?",
+      "idealKeywords": [
+        "downstream",
+        "retry",
+        "partial",
+        "latency",
+        "idempotency"
+      ],
+      "followUp": "Ответ должен отделить первичный таймаут от вторичных эффектов."
+    },
+    {
+      "at": 620,
+      "question": "Какой самый безопасный mitigation, если root cause ещё не доказан до конца?",
+      "idealKeywords": [
+        "feature flag",
+        "rollback",
+        "canary",
+        "disable",
+        "reconcile"
+      ],
+      "followUp": "Ожидается обратимый шаг и план сверки частичных заказов."
+    }
+  ]
+}

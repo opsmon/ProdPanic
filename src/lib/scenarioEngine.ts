@@ -96,12 +96,14 @@ export function estimateImpactTick(scenario: Scenario, errorRate: number, affect
   const revenuePerMinute = {
     vm: 18000,
     docker: 30000,
-    kubernetes: 45000
+    kubernetes: 45000,
+    architecture: scenario.businessContext?.lossRubPerMinute ?? 85000
   }[scenario.difficulty];
   const supportCostPerAffectedUserHour = {
     vm: 3,
     docker: 5,
-    kubernetes: 7
+    kubernetes: 7,
+    architecture: 10
   }[scenario.difficulty];
   const failedFraction = Math.max(0, Math.min(1, errorRate / 100));
   const revenueLoss = (revenuePerMinute / 60) * failedFraction;
@@ -169,10 +171,21 @@ export function buildInterviewReport(input: InterviewReportInput): string {
     `- Unknown commands: ${unknownCommands}`,
     `- Connected sections: ${sections.join(', ') || 'none'}`,
     `- Candidate notes: ${input.candidateNotes.length}`,
+    `- Interviewer answers: ${input.interviewerAnswers.length}`,
     ``,
     `## Candidate notes`,
     ...(input.candidateNotes.length
       ? input.candidateNotes.map((note) => `- ${formatTimer(note.at)} ${note.text}`)
+      : ['- none']),
+    ``,
+    `## Interviewer questions`,
+    ...(input.interviewerAnswers.length
+      ? input.interviewerAnswers.flatMap((item) => [
+          `### ${formatTimer(item.at)} ${item.question}`,
+          item.answer,
+          `Matched prepared rubric: ${item.matched ? 'YES' : 'NO'}`,
+          item.followUp ? `Follow-up: ${item.followUp}` : ''
+        ])
       : ['- none']),
     ``,
     `## Candidate final answers`,

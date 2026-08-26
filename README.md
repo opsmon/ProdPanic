@@ -7,7 +7,7 @@
 ## Что есть в MVP
 
 - уровни `VM`, `Docker`, `Kubernetes`;
-- 9 incident scenarios: по 3 кейса на каждый уровень;
+- 10 scenarios: по 3 кейса на `VM`, `Docker`, `Kubernetes` и отдельный architecture drill;
 - отдельная кнопка `Start`, после которой начинается таймер;
 - 20-минутный таймер, score и communication score;
 - постоянные incident metrics: error rate, affected users, service status;
@@ -20,6 +20,7 @@
 - большая кнопка `ROLLBACK`;
 - Kubernetes-сценарий с ArgoCD self-heal после ручного rollback;
 - manager events с вариантами ответа;
+- architecture drill с большой кликабельной схемой, подготовленными вопросами интервьюера и правой панелью заметок;
 - экран результата с impact estimate, scoring rubric и полным interview report;
 - скачивание полного отчёта в Markdown;
 - textarea-ответы по root cause, восстановлению и prevention.
@@ -66,6 +67,7 @@ Settings -> Pages -> Build and deployment -> Source -> GitHub Actions
 ```
 
 Для project pages workflow передаёт `BASE_PATH=/<repo-name>`, чтобы SvelteKit корректно собрал пути ассетов.
+Workflow использует официальный Pages-пайплайн: `actions/configure-pages`, `actions/upload-pages-artifact` и `actions/deploy-pages`.
 
 ## Структура
 
@@ -89,12 +91,15 @@ src/
       argocd-failed-migration.json
       service-selector-mismatch.json
       networkpolicy-blocks-redis.json
+    architecture/
+      checkout-cache-schema.json
 ```
 
 ## Как добавить scenario
 
 1. Создать JSON-файл в подходящей папке `src/scenarios/<level>/`.
 2. Заполнить поля сценария: incident metadata, initial state, sections, commands, actions, manager events.
+   Для architecture drill можно дополнительно указать `diagram`, `businessContext` и `interviewerQuestions`.
 3. Импортировать JSON в `src/routes/+page.svelte` и добавить его в массив `scenarios`.
 
 Минимальная форма:

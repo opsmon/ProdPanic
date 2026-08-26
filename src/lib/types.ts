@@ -1,4 +1,4 @@
-export type Difficulty = 'vm' | 'docker' | 'kubernetes';
+export type Difficulty = 'vm' | 'docker' | 'kubernetes' | 'architecture';
 
 export type SeverityStatus = 'DEGRADED' | 'RECOVERING' | 'RECOVERED' | 'DOWN';
 
@@ -42,6 +42,41 @@ export interface ManagerEvent {
   message: string;
 }
 
+export interface ScenarioDiagramNode {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  tone: 'edge' | 'app' | 'data' | 'control' | 'queue' | 'external' | 'risk';
+  sectionId?: string;
+  detail?: string;
+}
+
+export interface ScenarioDiagramLink {
+  from: string;
+  to: string;
+  label?: string;
+  status?: 'ok' | 'degraded' | 'blocked' | 'unknown';
+}
+
+export interface ScenarioDiagram {
+  nodes: ScenarioDiagramNode[];
+  links: ScenarioDiagramLink[];
+}
+
+export interface InterviewerQuestion {
+  at: number;
+  question: string;
+  idealKeywords: string[];
+  followUp?: string;
+}
+
+export interface BusinessContext {
+  headline: string;
+  lossRubPerMinute: number;
+  objective: string;
+}
+
 export interface Scenario {
   id: string;
   name: string;
@@ -53,6 +88,9 @@ export interface Scenario {
   architecture: string[];
   rootCause: string;
   rootCauseKeywords: string[];
+  businessContext?: BusinessContext;
+  diagram?: ScenarioDiagram;
+  interviewerQuestions?: InterviewerQuestion[];
   initialState: MetricState;
   sections: ScenarioSection[];
   commands: ScenarioCommand[];
@@ -70,6 +108,14 @@ export interface CommandEntry {
   section: string;
   command: string;
   recognized: boolean;
+}
+
+export interface InterviewerAnswer {
+  at: number;
+  question: string;
+  answer: string;
+  matched: boolean;
+  followUp?: string;
 }
 
 export interface ResultSummary {
@@ -102,6 +148,7 @@ export interface InterviewReportInput {
   timeline: TimelineEntry[];
   commandHistory: CommandEntry[];
   candidateNotes: Array<{ at: number; text: string }>;
+  interviewerAnswers: InterviewerAnswer[];
   rootCauseAnswer: string;
   recoveryAnswer: string;
   preventionAnswer: string;
