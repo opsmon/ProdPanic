@@ -57,6 +57,7 @@ export interface ScenarioDiagramLink {
   to: string;
   label?: string;
   status?: 'ok' | 'degraded' | 'blocked' | 'unknown';
+  direction?: 'forward' | 'back' | 'both' | 'none';
 }
 
 export interface ScenarioDiagram {

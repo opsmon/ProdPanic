@@ -2,20 +2,34 @@
   import {
     Activity,
     AlertTriangle,
+    Box,
+    ChartColumn,
     CheckCircle2,
     Clock3,
+    CreditCard,
+    Database,
     Download,
     FileText,
+    Flag,
     GitBranch,
+    Globe,
     History,
+    Landmark,
     Layers,
+    LockKeyhole,
     MessageSquare,
+    Network,
     Play,
     RotateCcw,
+    Search,
     Send,
     Server,
+    Settings,
     ShieldCheck,
+    ShoppingCart,
+    Tags,
     Terminal,
+    Users,
     Workflow,
     XCircle
   } from '@lucide/svelte';
@@ -91,7 +105,15 @@
   ];
   type DiagramNode = ScenarioDiagramNode;
   type DiagramLink = ScenarioDiagramLink;
-  type DiagramLine = { x1: number; y1: number; x2: number; y2: number; label?: string; status?: DiagramLink['status'] };
+  type DiagramLine = {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    label?: string;
+    status?: DiagramLink['status'];
+    direction?: DiagramLink['direction'];
+  };
   type CandidateNote = { at: number; text: string };
 
   let selectedScenarioForStart: Scenario | null = scenarios[0];
@@ -693,19 +715,46 @@
       const length = Math.hypot(dx, dy) || 1;
       const ux = dx / length;
       const uy = dy / length;
-      const trim = Math.abs(dy) < 1 ? 3.5 : Math.abs(dx) < 1 ? 3.2 : 4.4;
+      const isArchitecture = current.difficulty === 'architecture';
+      const fromTrim = isArchitecture
+        ? architectureNodeTrim(from, ux, uy)
+        : Math.abs(dy) < 1
+          ? 3.5
+          : Math.abs(dx) < 1
+            ? 3.2
+            : 4.4;
+      const toTrim = isArchitecture
+        ? architectureNodeTrim(to, ux, uy)
+        : Math.abs(dy) < 1
+          ? 3.5
+          : Math.abs(dx) < 1
+            ? 3.2
+            : 4.4;
 
       return [
         {
-          x1: from.x + ux * trim,
-          y1: from.y + uy * trim,
-          x2: to.x - ux * trim,
-          y2: to.y - uy * trim,
+          x1: from.x + ux * fromTrim,
+          y1: from.y + uy * fromTrim,
+          x2: to.x - ux * toTrim,
+          y2: to.y - uy * toTrim,
           label: link.label,
-          status: link.status
+          status: link.status,
+          direction: link.direction ?? 'forward'
         }
       ];
     });
+  }
+
+  function architectureNodeTrim(node: DiagramNode, ux: number, uy: number) {
+    const { rx, ry } =
+      node.id === 'checkout'
+        ? { rx: 11.2, ry: 13.6 }
+        : node.id === 'observability' || node.id === 'logging'
+          ? { rx: 7.4, ry: 4.8 }
+          : { rx: 6.5, ry: 4.9 };
+    const tx = Math.abs(ux) > 0.001 ? rx / Math.abs(ux) : Number.POSITIVE_INFINITY;
+    const ty = Math.abs(uy) > 0.001 ? ry / Math.abs(uy) : Number.POSITIVE_INFINITY;
+    return Math.min(tx, ty) + 0.35;
   }
 
   function lineClass(status: DiagramLink['status'] = 'ok') {
@@ -713,6 +762,21 @@
     if (status === 'degraded') return 'stroke-signal';
     if (status === 'unknown') return 'stroke-slate-500';
     return 'stroke-slate-200';
+  }
+
+  function markerId(status: DiagramLink['status'] = 'ok') {
+    if (status === 'blocked') return 'arrow-blocked';
+    if (status === 'degraded') return 'arrow-degraded';
+    if (status === 'unknown') return 'arrow-unknown';
+    return 'arrow-ok';
+  }
+
+  function markerStart(line: DiagramLine) {
+    return line.direction === 'back' || line.direction === 'both' ? `url(#${markerId(line.status)})` : undefined;
+  }
+
+  function markerEnd(line: DiagramLine) {
+    return line.direction === 'forward' || line.direction === 'both' ? `url(#${markerId(line.status)})` : undefined;
   }
 
   function nodeClasses(node: DiagramNode, compact = false) {
@@ -750,6 +814,94 @@
                   ? 'border-danger/70 bg-danger/10 text-danger'
                   : 'border-line bg-panelSoft text-slate-200';
     return `${base} ${tone}`;
+  }
+
+  function architectureNodeClasses(node: DiagramNode) {
+    if (node.id === 'checkout') {
+      return 'min-h-[190px] w-[270px] flex-col gap-4 rounded-lg border-2 border-danger bg-[#641a22]/90 text-danger shadow-[0_0_42px_rgba(255,107,107,0.18)]';
+    }
+
+    const tone =
+      node.tone === 'edge'
+        ? 'border-sky-400 bg-[#08213b] text-sky-100 shadow-[0_0_24px_rgba(56,189,248,0.16)]'
+        : node.tone === 'data'
+          ? 'border-ok/80 bg-[#0f2c1b] text-ok shadow-[0_0_24px_rgba(110,231,168,0.12)]'
+          : node.tone === 'queue'
+            ? 'border-cyan-300/80 bg-[#0c2d3a] text-cyan-100 shadow-[0_0_24px_rgba(103,232,249,0.12)]'
+            : node.tone === 'external'
+              ? 'border-fuchsia-300/70 bg-[#251634] text-fuchsia-100 shadow-[0_0_24px_rgba(217,70,239,0.12)]'
+              : node.tone === 'risk'
+                ? 'border-danger/80 bg-[#2a1014] text-danger shadow-[0_0_24px_rgba(255,107,107,0.14)]'
+                : 'border-signal/80 bg-[#2a2110] text-signal shadow-[0_0_24px_rgba(248,201,90,0.12)]';
+
+    return `min-h-16 w-[150px] gap-3 rounded-md border-2 px-4 text-sm ${tone}`;
+  }
+
+  function architectureIconClasses(node: DiagramNode) {
+    return node.id === 'checkout' ? 'h-14 w-14' : 'h-7 w-7 shrink-0';
+  }
+
+  function architecturePrimaryLabel(node: DiagramNode) {
+    if (node.id === 'redis-session') return 'Redis';
+    if (node.id === 'redis-analytics') return 'Redis';
+    if (node.id === 'postgres') return 'PostgreSQL';
+    if (node.id === 'kafka') return 'Kafka';
+    if (node.id === 'payment') return 'Payment';
+    if (node.id === 'observability') return 'Observability';
+    if (node.id === 'logging') return 'Logging';
+    return node.label;
+  }
+
+  function architectureSecondaryLabel(node: DiagramNode) {
+    if (node.id === 'redis-session') return 'sessions';
+    if (node.id === 'redis-analytics') return 'analytics';
+    if (node.id === 'postgres') return 'orders';
+    if (node.id === 'kafka') return 'checkout-events';
+    if (node.id === 'payment') return 'Orchestrator';
+    if (node.id === 'observability') return 'Prometheus / Grafana';
+    if (node.id === 'logging') return 'Loki / ELK';
+    return '';
+  }
+
+  function iconForNode(id: string) {
+    const icons = {
+      users: Users,
+      cdn: Globe,
+      gateway: Network,
+      auth: LockKeyhole,
+      feature: Flag,
+      checkout: ShoppingCart,
+      cart: ShoppingCart,
+      pricing: Tags,
+      payment: CreditCard,
+      'redis-session': Database,
+      'redis-analytics': Database,
+      postgres: Database,
+      kafka: Network,
+      outbox: Settings,
+      psp: Landmark,
+      observability: ChartColumn,
+      logging: Search
+    };
+    return icons[id as keyof typeof icons] ?? Box;
+  }
+
+  function architectureNodes(current: Scenario) {
+    return diagramForScenario(current).nodes.filter(
+      (node) => node.id !== 'observability' && node.id !== 'logging'
+    );
+  }
+
+  function groupedNode(current: Scenario, id: string): DiagramNode {
+    return (
+      diagramForScenario(current).nodes.find((node) => node.id === id) ?? {
+        id,
+        label: id,
+        x: 0,
+        y: 0,
+        tone: 'control'
+      }
+    );
   }
 
   function connectNode(node: DiagramNode) {
@@ -1272,17 +1424,37 @@
     {:else}
       {#if scenario.difficulty === 'architecture'}
         <section class="grid gap-4">
-          <div class="grid gap-4">
-            <section class="border border-line bg-panel">
-              <div class="flex flex-col gap-1 border-b border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <section class="overflow-hidden border border-line bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+            <div class="flex items-center justify-between gap-4 border-b border-line px-4 py-3 sm:px-5">
+              <div>
                 <h3 class="flex items-center gap-2 font-semibold">
                   <Workflow size={18} />
                   Incident Map
                 </h3>
-                <span class="font-mono text-2xl text-signal">{formatTimer(remaining)}</span>
               </div>
-              <div class="relative h-[620px] overflow-hidden bg-[#070a0d] sm:h-[700px]">
+              <span class="font-mono text-2xl font-semibold text-signal sm:text-3xl">{formatTimer(remaining)}</span>
+            </div>
+
+            <div class="overflow-auto bg-[#03080d]">
+              <div
+                class="relative h-[660px] min-w-[1180px] overflow-hidden bg-[#061019] sm:h-[720px]"
+                style="background-image: linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px), linear-gradient(rgba(59, 130, 246, 0.045) 1px, transparent 1px); background-size: 48px 48px;"
+              >
                 <svg class="pointer-events-none absolute inset-0 z-10 h-full w-full" viewBox="0 0 100 100" aria-hidden="true">
+                  <defs>
+                    <marker id="arrow-ok" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e2e8f0" />
+                    </marker>
+                    <marker id="arrow-degraded" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f8c95a" />
+                    </marker>
+                    <marker id="arrow-blocked" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff6b6b" />
+                    </marker>
+                    <marker id="arrow-unknown" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+                    </marker>
+                  </defs>
                   {#each diagramLines(scenario) as line}
                     <line
                       x1={line.x1}
@@ -1291,23 +1463,60 @@
                       y2={line.y2}
                       class={lineClass(line.status)}
                       opacity={line.status === 'blocked' ? '0.95' : '0.82'}
-                      stroke-width={line.status === 'blocked' ? '0.8' : '0.55'}
+                      stroke-width={line.status === 'blocked' ? '0.58' : '0.34'}
                       stroke-linecap="round"
+                      marker-start={markerStart(line)}
+                      marker-end={markerEnd(line)}
                     />
                   {/each}
                 </svg>
-                {#each diagramForScenario(scenario).nodes as node}
+
+                {#each architectureNodes(scenario) as node}
+                  {@const Icon = iconForNode(node.id)}
                   <div
-                    class={`absolute z-20 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center border px-2 text-center font-mono leading-4 shadow-[0_0_20px_rgba(0,0,0,0.26)] ${nodeClasses(node)}`}
+                    class={`absolute z-20 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center text-center font-mono font-semibold leading-tight ${architectureNodeClasses(node)}`}
                     style={`left: ${node.x}%; top: ${node.y}%`}
                   >
-                    {node.label}
+                    <Icon class={architectureIconClasses(node)} strokeWidth={1.8} aria-hidden="true" />
+                    <span class={node.id === 'checkout' ? 'text-2xl text-white' : 'grid text-sm'}>
+                      <span>{architecturePrimaryLabel(node)}</span>
+                      {#if node.id !== 'checkout' && architectureSecondaryLabel(node)}
+                        <span class="text-xs font-normal opacity-90">{architectureSecondaryLabel(node)}</span>
+                      {/if}
+                    </span>
                   </div>
                 {/each}
-              </div>
-            </section>
 
-          </div>
+                <div
+                  class="absolute z-20 grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-dashed border-slate-400/60 bg-[#111827]/55 p-4"
+                  style="left: 86%; top: 65%; width: 220px;"
+                >
+                  {#if groupedNode(scenario, 'observability')}
+                    {@const observability = groupedNode(scenario, 'observability')}
+                    {@const ObservabilityIcon = iconForNode('observability')}
+                    <div class="flex min-h-[82px] items-center gap-4 rounded-md border-2 border-orange-400/80 bg-[#2a2110] px-4 text-orange-100 shadow-[0_0_24px_rgba(251,146,60,0.14)]">
+                      <ObservabilityIcon class="h-8 w-8 shrink-0 text-orange-300" strokeWidth={1.8} aria-hidden="true" />
+                      <span class="grid font-mono leading-tight">
+                        <span class="font-semibold">{architecturePrimaryLabel(observability)}</span>
+                        <span class="text-[11px] text-orange-100/80">{architectureSecondaryLabel(observability)}</span>
+                      </span>
+                    </div>
+                  {/if}
+                  {#if groupedNode(scenario, 'logging')}
+                    {@const logging = groupedNode(scenario, 'logging')}
+                    {@const LoggingIcon = iconForNode('logging')}
+                    <div class="flex min-h-[82px] items-center gap-4 rounded-md border-2 border-orange-400/80 bg-[#2a2110] px-4 text-orange-100 shadow-[0_0_24px_rgba(251,146,60,0.14)]">
+                      <LoggingIcon class="h-8 w-8 shrink-0 text-orange-300" strokeWidth={1.8} aria-hidden="true" />
+                      <span class="grid font-mono leading-tight">
+                        <span class="font-semibold">{architecturePrimaryLabel(logging)}</span>
+                        <span class="text-[11px] text-orange-100/80">{architectureSecondaryLabel(logging)}</span>
+                      </span>
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          </section>
         </section>
       {:else}
       <section class="grid gap-4 xl:grid-cols-[320px_1fr_360px]">

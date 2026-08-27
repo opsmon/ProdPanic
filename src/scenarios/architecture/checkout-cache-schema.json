@@ -42,7 +42,7 @@
         "id": "users",
         "label": "Users",
         "x": 7,
-        "y": 15,
+        "y": 8,
         "tone": "edge",
         "sectionId": "edge",
         "detail": "Mobile and web checkout traffic."
@@ -50,8 +50,8 @@
       {
         "id": "cdn",
         "label": "CDN/WAF",
-        "x": 24,
-        "y": 15,
+        "x": 22,
+        "y": 8,
         "tone": "edge",
         "sectionId": "edge",
         "detail": "No traffic blocks; 5xx generated behind gateway."
@@ -59,17 +59,17 @@
       {
         "id": "gateway",
         "label": "API Gateway",
-        "x": 41,
-        "y": 15,
+        "x": 38,
+        "y": 8,
         "tone": "edge",
         "sectionId": "gateway",
         "detail": "Routes /checkout and /payment to internal services."
       },
       {
         "id": "auth",
-        "label": "Auth",
-        "x": 58,
-        "y": 15,
+        "label": "Auth Service",
+        "x": 54,
+        "y": 8,
         "tone": "control",
         "sectionId": "auth",
         "detail": "Token validation is healthy."
@@ -77,8 +77,8 @@
       {
         "id": "feature",
         "label": "Feature Flags",
-        "x": 75,
-        "y": 15,
+        "x": 70,
+        "y": 8,
         "tone": "control",
         "sectionId": "flags",
         "detail": "checkout-v4 flag was enabled for 50% of traffic."
@@ -86,8 +86,8 @@
       {
         "id": "checkout",
         "label": "Checkout API v4",
-        "x": 55,
-        "y": 35,
+        "x": 47,
+        "y": 34,
         "tone": "risk",
         "sectionId": "checkout",
         "detail": "New idempotency store dependency was added in v4."
@@ -95,8 +95,8 @@
       {
         "id": "cart",
         "label": "Cart API",
-        "x": 38,
-        "y": 47,
+        "x": 19,
+        "y": 31,
         "tone": "app",
         "sectionId": "cart",
         "detail": "Cart reads are healthy."
@@ -104,8 +104,8 @@
       {
         "id": "pricing",
         "label": "Pricing API",
-        "x": 64,
-        "y": 54,
+        "x": 68,
+        "y": 40,
         "tone": "app",
         "sectionId": "pricing",
         "detail": "Pricing latency is normal."
@@ -113,8 +113,8 @@
       {
         "id": "payment",
         "label": "Payment Orchestrator",
-        "x": 74,
-        "y": 35,
+        "x": 68,
+        "y": 27,
         "tone": "app",
         "sectionId": "payment",
         "detail": "Retries payment creation when checkout times out."
@@ -122,8 +122,8 @@
       {
         "id": "redis-session",
         "label": "Redis sessions",
-        "x": 33,
-        "y": 65,
+        "x": 19,
+        "y": 49,
         "tone": "data",
         "sectionId": "redis",
         "detail": "Primary session Redis is healthy and writable."
@@ -131,8 +131,8 @@
       {
         "id": "redis-analytics",
         "label": "Redis analytics",
-        "x": 55,
-        "y": 74,
+        "x": 47,
+        "y": 62,
         "tone": "risk",
         "sectionId": "redis",
         "detail": "Read-only analytics endpoint is not reachable from checkout namespace."
@@ -140,8 +140,8 @@
       {
         "id": "postgres",
         "label": "PostgreSQL orders",
-        "x": 76,
-        "y": 65,
+        "x": 68,
+        "y": 51,
         "tone": "data",
         "sectionId": "postgres",
         "detail": "Orders table receives partial checkout records."
@@ -149,8 +149,8 @@
       {
         "id": "kafka",
         "label": "Kafka checkout-events",
-        "x": 35,
-        "y": 88,
+        "x": 31,
+        "y": 86,
         "tone": "queue",
         "sectionId": "kafka",
         "detail": "Event lag is secondary to checkout failures."
@@ -158,8 +158,8 @@
       {
         "id": "outbox",
         "label": "Outbox worker",
-        "x": 57,
-        "y": 88,
+        "x": 55,
+        "y": 86,
         "tone": "queue",
         "sectionId": "outbox",
         "detail": "Publishes completed orders after DB commit."
@@ -167,8 +167,8 @@
       {
         "id": "psp",
         "label": "External PSP",
-        "x": 92,
-        "y": 35,
+        "x": 86,
+        "y": 27,
         "tone": "external",
         "sectionId": "psp",
         "detail": "Provider is healthy; duplicate attempts are rejected inconsistently."
@@ -176,103 +176,118 @@
       {
         "id": "observability",
         "label": "Observability",
-        "x": 92,
-        "y": 62,
+        "x": 86,
+        "y": 57,
         "tone": "control",
         "sectionId": "observability",
         "detail": "Dashboards show Redis timeout spike from checkout-v4."
+      },
+      {
+        "id": "logging",
+        "label": "Logging",
+        "x": 86,
+        "y": 72,
+        "tone": "control",
+        "sectionId": "observability",
+        "detail": "Loki/ELK logs confirm idempotency store timeout."
       }
     ],
     "links": [
       {
         "from": "users",
         "to": "cdn",
-        "label": "HTTPS",
-        "status": "ok"
+        "status": "ok",
+        "direction": "forward"
       },
       {
         "from": "cdn",
         "to": "gateway",
-        "label": "edge",
-        "status": "ok"
-      },
-      {
-        "from": "gateway",
-        "to": "checkout",
-        "label": "/checkout",
-        "status": "degraded"
+        "status": "ok",
+        "direction": "forward"
       },
       {
         "from": "gateway",
         "to": "auth",
-        "label": "JWT",
-        "status": "ok"
+        "status": "ok",
+        "direction": "forward"
       },
       {
-        "from": "feature",
+        "from": "auth",
+        "to": "feature",
+        "status": "degraded",
+        "direction": "forward"
+      },
+      {
+        "from": "gateway",
         "to": "checkout",
-        "label": "flag rollout",
-        "status": "degraded"
+        "status": "ok",
+        "direction": "forward"
+      },
+      {
+        "from": "auth",
+        "to": "checkout",
+        "status": "degraded",
+        "direction": "forward"
       },
       {
         "from": "checkout",
         "to": "cart",
-        "label": "cart read",
-        "status": "ok"
+        "status": "ok",
+        "direction": "both"
       },
       {
         "from": "checkout",
         "to": "pricing",
-        "label": "quote",
-        "status": "ok"
+        "status": "ok",
+        "direction": "both"
       },
       {
         "from": "checkout",
         "to": "payment",
-        "label": "create intent",
-        "status": "degraded"
+        "status": "ok",
+        "direction": "both"
       },
       {
         "from": "payment",
         "to": "psp",
-        "label": "PSP API",
-        "status": "ok"
+        "status": "ok",
+        "direction": "forward"
       },
       {
         "from": "checkout",
         "to": "redis-session",
-        "label": "old sessions",
-        "status": "ok"
+        "status": "ok",
+        "direction": "both"
       },
       {
         "from": "checkout",
         "to": "redis-analytics",
-        "label": "new idempotency",
-        "status": "blocked"
+        "status": "blocked",
+        "direction": "forward"
       },
       {
         "from": "checkout",
         "to": "postgres",
-        "label": "orders",
-        "status": "degraded"
+        "status": "ok",
+        "direction": "both"
       },
       {
-        "from": "postgres",
+        "from": "checkout",
+        "to": "kafka",
+        "status": "ok",
+        "direction": "both"
+      },
+      {
+        "from": "checkout",
         "to": "outbox",
-        "label": "outbox",
-        "status": "unknown"
+        "status": "ok",
+        "direction": "forward"
       },
       {
         "from": "outbox",
         "to": "kafka",
-        "label": "publish",
-        "status": "degraded"
-      },
-      {
-        "from": "observability",
-        "to": "checkout",
-        "label": "traces",
-        "status": "degraded"
+        "status": "degraded",
+        "direction": "forward"
       }
     ]
   },
