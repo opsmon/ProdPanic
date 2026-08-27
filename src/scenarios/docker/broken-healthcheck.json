@@ -1,0 +1,145 @@
+{
+  "id": "docker-003",
+  "name": "Docker: healthcheck смотрит не туда",
+  "difficulty": "docker",
+  "duration": 1200,
+  "incidentNumber": "INCIDENT #007",
+  "incidentTitle": "Контейнеры постоянно пересоздаются",
+  "incidentText": "После обновления healthcheck compose начал перезапускать backend. Логи приложения выглядят здоровыми, но трафик скачет.",
+  "architecture": ["Internet", "Nginx container", "Backend containers", "Redis + PostgreSQL"],
+  "rootCause": "Healthcheck проверяет /healthz на порту 8080, а backend после релиза слушает /health на 9000; приложение живо, оркестрация считает его unhealthy.",
+  "rootCauseKeywords": ["healthcheck", "healthz", "health", "8080", "9000", "unhealthy", "порт", "endpoint"],
+  "initialState": {
+    "errorRate": 16,
+    "affectedUsers": 5310,
+    "serviceStatus": "DEGRADED"
+  },
+  "sections": [
+    {
+      "id": "docker",
+      "title": "Docker",
+      "description": "Container status, inspect and compose config.",
+      "commands": ["docker compose ps", "docker inspect backend-1", "docker events --since 10m"]
+    },
+    {
+      "id": "backend",
+      "title": "Backend",
+      "description": "Application logs, ports and health endpoints.",
+      "commands": ["docker logs backend-1", "curl -i backend-1:9000/health", "curl -i backend-1:8080/healthz"]
+    },
+    {
+      "id": "nginx",
+      "title": "Nginx",
+      "description": "Upstream availability and gateway errors.",
+      "commands": ["nginx upstream", "docker logs nginx"]
+    },
+    {
+      "id": "postgres",
+      "title": "PostgreSQL",
+      "description": "Database health.",
+      "commands": ["postgres connections", "postgres logs"]
+    }
+  ],
+  "commands": [
+    {
+      "command": "docker compose ps",
+      "section": "docker",
+      "output": "backend-1 unhealthy\nbackend-2 restarting\nbackend-3 unhealthy\nnginx running\npostgres running\nredis running",
+      "discovery": "checked container health state",
+      "scoreDelta": 40
+    },
+    {
+      "command": "docker inspect backend-1",
+      "section": "docker",
+      "output": "\"Healthcheck\": {\"Test\": [\"CMD-SHELL\", \"curl -f http://localhost:8080/healthz || exit 1\"]}\n\"RestartCount\": 19\n\"ExposedPorts\": {\"9000/tcp\": {}}",
+      "discovery": "checked healthcheck config",
+      "scoreDelta": 50
+    },
+    {
+      "command": "docker events --since 10m",
+      "section": "docker",
+      "output": "health_status: unhealthy backend-1\nrestart backend-2\nhealth_status: unhealthy backend-3",
+      "scoreDelta": 20
+    },
+    {
+      "command": "docker logs backend-1",
+      "section": "backend",
+      "output": "INFO server started on :9000\nINFO ready endpoint mounted at /health\nINFO db ok redis ok",
+      "discovery": "checked app logs healthy",
+      "scoreDelta": 30
+    },
+    {
+      "command": "curl -i backend-1:9000/health",
+      "section": "backend",
+      "output": "HTTP/1.1 200 OK\n{\"status\":\"ok\"}",
+      "discovery": "verified real health endpoint",
+      "scoreDelta": 40
+    },
+    {
+      "command": "curl -i backend-1:8080/healthz",
+      "section": "backend",
+      "output": "curl: (7) Failed to connect to backend-1 port 8080: Connection refused",
+      "scoreDelta": 30
+    },
+    {
+      "command": "nginx upstream",
+      "section": "nginx",
+      "output": "backend-1 down by healthcheck\nbackend-2 down by restart\nbackend-3 down by healthcheck",
+      "scoreDelta": 20
+    },
+    {
+      "command": "docker logs nginx",
+      "section": "nginx",
+      "output": "no live upstreams while connecting to upstream",
+      "scoreDelta": 10
+    },
+    {
+      "command": "postgres connections",
+      "section": "postgres",
+      "output": "active connections: 37/300",
+      "scoreDelta": 10
+    },
+    {
+      "command": "postgres logs",
+      "section": "postgres",
+      "output": "No recent errors.",
+      "scoreDelta": 10
+    }
+  ],
+  "actions": [
+    {
+      "id": "fix-healthcheck",
+      "label": "Apply compose fix",
+      "tone": "primary",
+      "output": "Healthcheck changed to http://localhost:9000/health.\nContainers became healthy.\nError rate: 16% -> 3% -> 0.2%\nService recovered.",
+      "scoreDelta": 120,
+      "restoreService": true
+    },
+    {
+      "id": "rollback",
+      "label": "ROLLBACK",
+      "tone": "primary",
+      "output": "Rolled back healthcheck config.\nError rate: 16% -> 4% -> 0.2%\nService recovered.",
+      "scoreDelta": 100,
+      "restoreService": true
+    },
+    {
+      "id": "restart-all",
+      "label": "Restart all containers",
+      "tone": "danger",
+      "output": "Containers restart and fail the same healthcheck again.",
+      "scoreDelta": -50,
+      "penaltyReason": "Restarted instead of checking healthcheck"
+    }
+  ],
+  "managerEvents": [
+    {
+      "at": 200,
+      "message": "Мониторинг говорит unhealthy, но почему тогда логи зелёные?"
+    },
+    {
+      "at": 600,
+      "message": "Клиенты видят ошибки волнами. Что происходит?"
+    }
+  ]
+}

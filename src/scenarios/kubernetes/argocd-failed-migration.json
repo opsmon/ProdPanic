@@ -1,0 +1,199 @@
+{
+  "id": "k8s-001",
+  "name": "Kubernetes: ArgoCD и failed migration",
+  "difficulty": "kubernetes",
+  "duration": 1200,
+  "incidentNumber": "INCIDENT #003",
+  "incidentTitle": "HTTP 500 после deploy",
+  "incidentText": "В 15:00 был deploy backend. В 15:05 поддержка сообщает о HTTP 500. Kubernetes выглядит здоровым, но бизнесовые запросы падают.",
+  "architecture": ["Internet", "Ingress Nginx", "Service", "Backend Deployment", "Redis + PostgreSQL", "ArgoCD"],
+  "rootCause": "CI/CD pipeline позволил выполнить deployment backend v2.18.0 после failed DB migration job; ArgoCD держит Git как source of truth и возвращает сломанный desired revision.",
+  "rootCauseKeywords": ["migration", "миграц", "pipeline", "пайплайн", "argocd", "source of truth", "git", "user_settings", "failed"],
+  "initialState": {
+    "errorRate": 37,
+    "affectedUsers": 12430,
+    "serviceStatus": "DEGRADED"
+  },
+  "sections": [
+    {
+      "id": "kubernetes",
+      "title": "Kubernetes",
+      "description": "Nodes, pods, deployments, events, services, endpoints и usage.",
+      "commands": ["kubectl get pods", "kubectl get nodes", "kubectl describe pod backend-7b9f", "kubectl get events", "kubectl get deploy", "kubectl get svc", "kubectl get endpoints"]
+    },
+    {
+      "id": "argocd",
+      "title": "ArgoCD",
+      "description": "Application status, sync, health, revision, history и diff.",
+      "commands": ["argocd app get backend-prod", "argocd app history backend-prod", "argocd app diff backend-prod"]
+    },
+    {
+      "id": "backend",
+      "title": "Backend",
+      "description": "Application logs и rollout history.",
+      "commands": ["kubectl logs deploy/backend", "kubectl rollout history deploy/backend"]
+    },
+    {
+      "id": "postgres",
+      "title": "PostgreSQL",
+      "description": "DB errors, schema state и migration traces.",
+      "commands": ["postgres logs", "\\dt user_settings", "ci pipeline"]
+    }
+  ],
+  "commands": [
+    {
+      "command": "kubectl get pods",
+      "section": "kubernetes",
+      "output": "NAME                       READY   STATUS    RESTARTS   AGE\nbackend-7b9f-42kxd          1/1     Running   0          8m\nbackend-7b9f-c91nx          1/1     Running   0          8m\nbackend-7b9f-h7vzd          1/1     Running   0          8m\nredis-0                    1/1     Running   0          31d\npostgres-0                 1/1     Running   0          31d",
+      "discovery": "Проверил pods: Kubernetes выглядит нормально",
+      "scoreDelta": 20
+    },
+    {
+      "command": "kubectl get nodes",
+      "section": "kubernetes",
+      "output": "NAME          STATUS   ROLES    AGE   VERSION\nprod-node-1   Ready    worker   91d   v1.31.4\nprod-node-2   Ready    worker   91d   v1.31.4\nprod-node-3   Ready    worker   91d   v1.31.4",
+      "scoreDelta": 10
+    },
+    {
+      "command": "kubectl describe pod backend-7b9f",
+      "aliases": ["kubectl describe pod"],
+      "section": "kubernetes",
+      "output": "Containers:\n  backend image: registry.example.com/backend:v2.18.0\nState: Running\nReady: True\nRestart Count: 0\nEvents: Pulled image, Started container",
+      "discovery": "Проверил image version backend",
+      "scoreDelta": 20
+    },
+    {
+      "command": "kubectl get events",
+      "section": "kubernetes",
+      "output": "15:00 Normal ScalingReplicaSet deployment/backend scaled up replica set backend-7b9f\n15:01 Normal Pulled container image backend:v2.18.0\n15:05 Warning HighErrorRate alert/backend-http-500 fired",
+      "discovery": "Связал deploy и алерт по времени",
+      "scoreDelta": 20
+    },
+    {
+      "command": "kubectl get deploy",
+      "section": "kubernetes",
+      "output": "NAME      READY   UP-TO-DATE   AVAILABLE   AGE\nbackend   3/3     3            3           180d\nIMAGE: registry.example.com/backend:v2.18.0",
+      "scoreDelta": 10
+    },
+    {
+      "command": "kubectl get svc",
+      "section": "kubernetes",
+      "output": "NAME       TYPE        CLUSTER-IP      PORT(S)\nbackend    ClusterIP   10.43.18.21     9000/TCP\nredis      ClusterIP   10.43.27.10     6379/TCP\npostgres   ClusterIP   10.43.92.31     5432/TCP",
+      "scoreDelta": 10
+    },
+    {
+      "command": "kubectl get endpoints",
+      "section": "kubernetes",
+      "output": "backend    10.42.1.18:9000,10.42.2.33:9000,10.42.3.11:9000\nredis      10.42.2.10:6379\npostgres   10.42.3.8:5432",
+      "scoreDelta": 10
+    },
+    {
+      "command": "kubectl logs deploy/backend",
+      "aliases": ["kubectl logs"],
+      "section": "backend",
+      "output": "15:05:12 ERROR request_id=6c2e GET /account/settings 500\n15:05:12 ERROR pq: relation \"user_settings\" does not exist\n15:05:13 ERROR failed to read account settings",
+      "discovery": "Нашёл application logs с отсутствующей таблицей",
+      "scoreDelta": 30
+    },
+    {
+      "command": "kubectl rollout history deploy/backend",
+      "aliases": ["kubectl rollout history"],
+      "section": "backend",
+      "output": "deployment.apps/backend\nREVISION  CHANGE-CAUSE\n41        backend:v2.17.4 stable\n42        backend:v2.18.0 deploy at 15:00",
+      "discovery": "Проверил rollout history",
+      "scoreDelta": 50
+    },
+    {
+      "command": "argocd app get backend-prod",
+      "section": "argocd",
+      "output": "Application: backend-prod\nStatus: Synced\nHealth: Degraded\nRevision: 8f34a1c\nAuto Sync: Enabled\nSelf Heal: Enabled\nImage: backend:v2.18.0",
+      "discovery": "Проверил ArgoCD health и desired revision",
+      "scoreDelta": 30
+    },
+    {
+      "command": "argocd app history backend-prod",
+      "section": "argocd",
+      "output": "ID  DATE   REVISION  IMAGE\n17  14:10  a9c7e01   backend:v2.17.4\n18  15:00  8f34a1c   backend:v2.18.0",
+      "discovery": "Проверил sync history",
+      "scoreDelta": 20
+    },
+    {
+      "command": "argocd app diff backend-prod",
+      "section": "argocd",
+      "output": "No live drift.\nDesired and live both point to backend:v2.18.0.\nGit revision 8f34a1c is source of truth.",
+      "discovery": "Понял, что Git является source of truth",
+      "scoreDelta": 30
+    },
+    {
+      "command": "postgres logs",
+      "section": "postgres",
+      "output": "ERROR: relation \"user_settings\" does not exist\nSTATEMENT: SELECT theme, locale FROM user_settings WHERE user_id = $1",
+      "discovery": "Подтвердил DB schema error",
+      "scoreDelta": 30
+    },
+    {
+      "command": "\\dt user_settings",
+      "section": "postgres",
+      "output": "Did not find any relation named \"user_settings\".",
+      "discovery": "Проверил отсутствие таблицы user_settings",
+      "scoreDelta": 30
+    },
+    {
+      "command": "ci pipeline",
+      "section": "postgres",
+      "output": "Build ........ SUCCESS\nTests ........ SUCCESS\nDB migration . FAILED\nDeploy ....... SUCCESS\n\nPolicy violation: deploy stage did not depend on migration success.",
+      "discovery": "Нашёл root cause в pipeline dependency",
+      "scoreDelta": 100
+    }
+  ],
+  "actions": [
+    {
+      "id": "rollback",
+      "label": "ROLLBACK",
+      "tone": "primary",
+      "output": "kubectl rollout undo deployment/backend\nError rate: 37% -> 9% -> 0.5%\nService recovered.\n\nWARNING\nArgoCD detected drift.\nDesired: backend:v2.18.0\nLive: backend:v2.17.4\nSelf-heal will start if Git desired state is not changed.",
+      "scoreDelta": 80,
+      "restoreService": true,
+      "argocdSelfHeal": true
+    },
+    {
+      "id": "git-rollback",
+      "label": "Rollback Git revision",
+      "tone": "primary",
+      "output": "Git target revision changed to a9c7e01 / backend:v2.17.4.\nArgoCD sync applied controlled rollback.\nError rate: 37% -> 5% -> 0.5%\nService recovered. Desired and live state match.",
+      "scoreDelta": 120,
+      "restoreService": true,
+      "rootCauseDiscovery": "Восстановил сервис через Git source of truth"
+    },
+    {
+      "id": "pause-autosync",
+      "label": "Pause auto-sync",
+      "tone": "neutral",
+      "output": "ArgoCD auto-sync suspended for backend-prod. Drift will not be self-healed while incident is active. Нужен follow-up rollback в Git.",
+      "scoreDelta": 40,
+      "rootCauseDiscovery": "Контролируемо остановил auto-sync"
+    },
+    {
+      "id": "delete-pods",
+      "label": "Delete backend pods",
+      "tone": "danger",
+      "output": "Pods recreated by ReplicaSet. New pods still run backend:v2.18.0 and keep returning HTTP 500.",
+      "scoreDelta": -30,
+      "penaltyReason": "Удаление pod'ов наугад"
+    }
+  ],
+  "managerEvents": [
+    {
+      "at": 180,
+      "message": "У нас прод лежит. Что сказать бизнесу?"
+    },
+    {
+      "at": 420,
+      "message": "Я не технарь. Мне нужно время."
+    },
+    {
+      "at": 900,
+      "message": "15 минут уже прошло. Есть ETA?"
+    }
+  ]
+}

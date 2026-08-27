@@ -1,0 +1,176 @@
+{
+  "id": "vm-001",
+  "name": "VM: пропущенная миграция",
+  "difficulty": "vm",
+  "duration": 1200,
+  "incidentNumber": "INCIDENT #001",
+  "incidentTitle": "Прод частично недоступен",
+  "incidentText": "Пользователи жалуются, что сайт отдаёт HTTP 500. Проблема появилась через несколько минут после релиза backend на VM.",
+  "architecture": ["Internet", "Nginx", "Backend process", "PostgreSQL"],
+  "rootCause": "После релиза приложение начало обращаться к таблице PostgreSQL user_settings, но миграция базы данных не была выполнена.",
+  "rootCauseKeywords": ["migration", "миграц", "user_settings", "relation", "table", "таблиц", "db", "postgres", "баз"],
+  "initialState": {
+    "errorRate": 37,
+    "affectedUsers": 12430,
+    "serviceStatus": "DEGRADED"
+  },
+  "sections": [
+    {
+      "id": "vm",
+      "title": "VM",
+      "description": "CPU, RAM, диск, systemd и сетевые соединения.",
+      "commands": ["top", "free -m", "df -h", "systemctl status backend", "journalctl -u backend", "ss -tulpn"]
+    },
+    {
+      "id": "nginx",
+      "title": "Nginx",
+      "description": "Status, access.log, error.log, upstream и latency.",
+      "commands": ["nginx status", "tail nginx/access.log", "tail nginx/error.log"]
+    },
+    {
+      "id": "backend",
+      "title": "Backend",
+      "description": "Логи приложения, процесс, ошибки и конфигурация.",
+      "commands": ["backend logs", "backend config", "ps aux | grep backend"]
+    },
+    {
+      "id": "postgres",
+      "title": "PostgreSQL",
+      "description": "Connections, active queries, logs и состояние таблиц.",
+      "commands": ["postgres connections", "postgres logs", "\\dt user_settings"]
+    }
+  ],
+  "commands": [
+    {
+      "command": "top",
+      "section": "vm",
+      "output": "load average: 0.72, 0.81, 0.77\nCPU: 18% user, 4% system, 78% idle\nbackend pid 1842 uses 14% CPU",
+      "scoreDelta": 10
+    },
+    {
+      "command": "free -m",
+      "section": "vm",
+      "output": "Mem: 7972 total, 3581 used, 3198 free, 1193 buff/cache\nSwap: 2048 total, 0 used",
+      "scoreDelta": 10
+    },
+    {
+      "command": "df -h",
+      "section": "vm",
+      "output": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/vda1        80G   41G   36G  54% /\n/dev/vdb1       120G   67G   47G  59% /var/lib/postgresql",
+      "scoreDelta": 10
+    },
+    {
+      "command": "systemctl status backend",
+      "section": "vm",
+      "output": "backend.service - Prod backend\nActive: active (running) since 14:57:28\nMain PID: 1842\nRecent deploy: release v2.18.0",
+      "discovery": "Проверил последнее изменение backend",
+      "scoreDelta": 50
+    },
+    {
+      "command": "journalctl -u backend",
+      "aliases": ["backend logs"],
+      "section": "backend",
+      "output": "14:59:54 ERROR request_id=bb1a GET /account/settings 500\n14:59:54 ERROR pq: relation \"user_settings\" does not exist\n14:59:55 ERROR failed to render user settings",
+      "discovery": "Нашёл application error с отсутствующей таблицей",
+      "scoreDelta": 30
+    },
+    {
+      "command": "ss -tulpn",
+      "section": "vm",
+      "output": "LISTEN 0 4096 0.0.0.0:80 users:(nginx)\nLISTEN 0 4096 127.0.0.1:9000 users:(backend)\nESTAB 0 0 127.0.0.1:9000 127.0.0.1:5432",
+      "scoreDelta": 10
+    },
+    {
+      "command": "nginx status",
+      "section": "nginx",
+      "output": "Active connections: 418\nRequests/s: 790\nUpstream backend: healthy\n5xx: 37%",
+      "scoreDelta": 10
+    },
+    {
+      "command": "tail nginx/access.log",
+      "section": "nginx",
+      "output": "GET / 200 28ms\nGET /account/settings 500 42ms\nGET /api/profile 200 31ms\nGET /account/settings 500 39ms",
+      "scoreDelta": 10
+    },
+    {
+      "command": "tail nginx/error.log",
+      "section": "nginx",
+      "output": "upstream returned 500 while reading response header from upstream: backend:9000",
+      "scoreDelta": 10
+    },
+    {
+      "command": "backend config",
+      "section": "backend",
+      "output": "APP_VERSION=v2.18.0\nDB_HOST=127.0.0.1\nFEATURE_USER_SETTINGS=true\nMIGRATION_VERSION=2026_08_26_1450",
+      "discovery": "Связал релиз с новой feature flag",
+      "scoreDelta": 20
+    },
+    {
+      "command": "ps aux | grep backend",
+      "section": "backend",
+      "output": "backend 1842 14.1 3.8 /opt/prod/backend --config /etc/backend.env",
+      "scoreDelta": 10
+    },
+    {
+      "command": "postgres connections",
+      "section": "postgres",
+      "output": "active connections: 43/300\nwaiting queries: 0\nlocks: none",
+      "discovery": "Проверил состояние БД",
+      "scoreDelta": 30
+    },
+    {
+      "command": "postgres logs",
+      "section": "postgres",
+      "output": "ERROR: relation \"user_settings\" does not exist at character 87\nSTATEMENT: SELECT theme, locale FROM user_settings WHERE user_id = $1",
+      "discovery": "Подтвердил ошибку схемы БД",
+      "scoreDelta": 30
+    },
+    {
+      "command": "\\dt user_settings",
+      "section": "postgres",
+      "output": "Did not find any relation named \"user_settings\".",
+      "discovery": "Проверил, что таблица отсутствует",
+      "scoreDelta": 30
+    }
+  ],
+  "actions": [
+    {
+      "id": "rollback",
+      "label": "ROLLBACK",
+      "tone": "primary",
+      "output": "Rollback initiated...\nError rate: 37% -> 4% -> 0.5%\nService recovered.\n\nПрод восстановлен. Но причина инцидента пока неизвестна.",
+      "scoreDelta": 100,
+      "restoreService": true
+    },
+    {
+      "id": "restart-backend",
+      "label": "Restart backend",
+      "tone": "neutral",
+      "output": "backend.service restarted. Первые запросы всё ещё падают с HTTP 500.",
+      "scoreDelta": -10,
+      "penaltyReason": "Бессмысленный restart"
+    },
+    {
+      "id": "restart-postgres",
+      "label": "Restart PostgreSQL",
+      "tone": "danger",
+      "output": "PostgreSQL restart увеличил latency. Ошибка relation does not exist осталась.",
+      "scoreDelta": -20,
+      "penaltyReason": "Restart PostgreSQL без подтверждения проблемы"
+    }
+  ],
+  "managerEvents": [
+    {
+      "at": 180,
+      "message": "ЧЕ ТАМ? КОГДА ПОЧИНИТЕ?"
+    },
+    {
+      "at": 420,
+      "message": "Пользователи пишут в поддержку. Что сказать бизнесу?"
+    },
+    {
+      "at": 900,
+      "message": "15 минут уже прошло. Есть ETA?"
+    }
+  ]
+}

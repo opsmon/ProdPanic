@@ -1,0 +1,151 @@
+{
+  "id": "vm-003",
+  "name": "VM: неправильный upstream port",
+  "difficulty": "vm",
+  "duration": 1200,
+  "incidentNumber": "INCIDENT #005",
+  "incidentTitle": "Почти все запросы получают 502",
+  "incidentText": "После reload Nginx сайт начал отвечать 502. Backend процесс жив, нагрузка на VM низкая.",
+  "architecture": ["Internet", "Nginx", "Backend process", "PostgreSQL"],
+  "rootCause": "В Nginx upstream после ручной правки указан порт 9001, а backend слушает 9000.",
+  "rootCauseKeywords": ["nginx", "upstream", "9001", "9000", "port", "порт", "502", "connect refused"],
+  "initialState": {
+    "errorRate": 61,
+    "affectedUsers": 17420,
+    "serviceStatus": "DEGRADED"
+  },
+  "sections": [
+    {
+      "id": "vm",
+      "title": "VM",
+      "description": "Подключение к VM: процессы, порты, systemd и сеть.",
+      "commands": ["ss -tulpn", "systemctl status backend", "systemctl status nginx"]
+    },
+    {
+      "id": "nginx",
+      "title": "Nginx",
+      "description": "Конфиг reverse proxy, upstream и error log.",
+      "commands": ["nginx -t", "cat /etc/nginx/conf.d/backend.conf", "tail nginx/error.log", "nginx status"]
+    },
+    {
+      "id": "backend",
+      "title": "Backend",
+      "description": "Порт приложения, health и логи.",
+      "commands": ["curl -i localhost:9000/health", "curl -i localhost:9001/health", "backend logs"]
+    },
+    {
+      "id": "postgres",
+      "title": "PostgreSQL",
+      "description": "База данных и connections.",
+      "commands": ["postgres connections", "postgres logs"]
+    }
+  ],
+  "commands": [
+    {
+      "command": "ss -tulpn",
+      "section": "vm",
+      "output": "LISTEN 0 4096 0.0.0.0:80 users:(nginx)\nLISTEN 0 4096 127.0.0.1:9000 users:(backend)\nLISTEN 0 4096 127.0.0.1:5432 users:(postgres)",
+      "discovery": "checked listening ports",
+      "scoreDelta": 40
+    },
+    {
+      "command": "systemctl status backend",
+      "section": "vm",
+      "output": "backend.service active (running)\nMain PID: 1842\nListening on 127.0.0.1:9000",
+      "scoreDelta": 20
+    },
+    {
+      "command": "systemctl status nginx",
+      "section": "vm",
+      "output": "nginx.service active (running)\nReloaded at 15:02:11 by deploy-hook",
+      "scoreDelta": 20
+    },
+    {
+      "command": "nginx -t",
+      "section": "nginx",
+      "output": "nginx: the configuration file /etc/nginx/nginx.conf syntax is ok\nnginx: configuration file /etc/nginx/nginx.conf test is successful",
+      "scoreDelta": 10
+    },
+    {
+      "command": "cat /etc/nginx/conf.d/backend.conf",
+      "section": "nginx",
+      "output": "upstream backend { server 127.0.0.1:9001; }\nserver { location / { proxy_pass http://backend; } }",
+      "discovery": "checked nginx upstream config",
+      "scoreDelta": 50
+    },
+    {
+      "command": "tail nginx/error.log",
+      "section": "nginx",
+      "output": "connect() failed (111: Connection refused) while connecting to upstream, upstream: \"http://127.0.0.1:9001/\"",
+      "discovery": "checked nginx error log",
+      "scoreDelta": 40
+    },
+    {
+      "command": "curl -i localhost:9000/health",
+      "section": "backend",
+      "output": "HTTP/1.1 200 OK\n{\"status\":\"ok\",\"version\":\"v1.28.3\"}",
+      "discovery": "verified backend health on 9000",
+      "scoreDelta": 30
+    },
+    {
+      "command": "curl -i localhost:9001/health",
+      "section": "backend",
+      "output": "curl: (7) Failed to connect to localhost port 9001: Connection refused",
+      "scoreDelta": 20
+    },
+    {
+      "command": "backend logs",
+      "section": "backend",
+      "output": "INFO server started on 127.0.0.1:9000\nINFO db connection pool ready",
+      "scoreDelta": 20
+    },
+    {
+      "command": "postgres connections",
+      "section": "postgres",
+      "output": "active connections: 28/300\nlocks: none",
+      "scoreDelta": 10
+    },
+    {
+      "command": "postgres logs",
+      "section": "postgres",
+      "output": "No recent errors.",
+      "scoreDelta": 10
+    }
+  ],
+  "actions": [
+    {
+      "id": "reload-nginx-good",
+      "label": "Apply config change",
+      "tone": "primary",
+      "output": "upstream backend changed to 127.0.0.1:9000\nnginx reload successful\nError rate: 61% -> 8% -> 0.2%\nService recovered.",
+      "scoreDelta": 110,
+      "restoreService": true
+    },
+    {
+      "id": "rollback",
+      "label": "ROLLBACK",
+      "tone": "primary",
+      "output": "Nginx config rollback applied.\nError rate: 61% -> 5% -> 0.2%\nService recovered.",
+      "scoreDelta": 100,
+      "restoreService": true
+    },
+    {
+      "id": "restart-backend",
+      "label": "Restart backend",
+      "tone": "danger",
+      "output": "Backend restarted and still listens on 9000. Nginx continues to connect to 9001.",
+      "scoreDelta": -10,
+      "penaltyReason": "Restarted healthy backend"
+    }
+  ],
+  "managerEvents": [
+    {
+      "at": 180,
+      "message": "Снаружи всё 502. Это бэкенд умер?"
+    },
+    {
+      "at": 540,
+      "message": "Нам нужен ETA, продажи стоят."
+    }
+  ]
+}

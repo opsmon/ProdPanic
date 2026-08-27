@@ -1,0 +1,150 @@
+{
+  "id": "k8s-002",
+  "name": "Kubernetes: service selector mismatch",
+  "difficulty": "kubernetes",
+  "duration": 1200,
+  "incidentNumber": "INCIDENT #008",
+  "incidentTitle": "Ingress отдаёт 503",
+  "incidentText": "После deployment pods Running и Ready, но снаружи сервис отвечает 503. Restart pod'ов ничего не меняет.",
+  "architecture": ["Internet", "Ingress Nginx", "Service", "Backend Deployment", "Redis + PostgreSQL", "ArgoCD"],
+  "rootCause": "Deployment получил label app=backend-v2, а Service selector всё ещё ищет app=backend; endpoints пустые.",
+  "rootCauseKeywords": ["selector", "label", "labels", "endpoints", "empty", "app=backend", "backend-v2", "service", "селектор"],
+  "initialState": {
+    "errorRate": 72,
+    "affectedUsers": 19200,
+    "serviceStatus": "DEGRADED"
+  },
+  "sections": [
+    {
+      "id": "kubernetes",
+      "title": "Kubernetes",
+      "description": "Pods, services, endpoints, labels, events.",
+      "commands": ["kubectl get pods --show-labels", "kubectl get svc backend -o yaml", "kubectl get endpoints backend", "kubectl describe svc backend", "kubectl get events"]
+    },
+    {
+      "id": "nginx",
+      "title": "Nginx",
+      "description": "Ingress controller logs and upstream.",
+      "commands": ["kubectl logs deploy/ingress-nginx-controller", "kubectl describe ingress backend"]
+    },
+    {
+      "id": "backend",
+      "title": "Backend",
+      "description": "Backend pod logs and readiness.",
+      "commands": ["kubectl logs deploy/backend", "kubectl describe pod backend-7c8d"]
+    },
+    {
+      "id": "argocd",
+      "title": "ArgoCD",
+      "description": "Desired manifests, sync status and diff.",
+      "commands": ["argocd app get backend-prod", "argocd app diff backend-prod"]
+    }
+  ],
+  "commands": [
+    {
+      "command": "kubectl get pods --show-labels",
+      "section": "kubernetes",
+      "output": "NAME                    READY STATUS  RESTARTS LABELS\nbackend-7c8d-4tt9z       1/1   Running 0        app=backend-v2,version=v2.19.0\nbackend-7c8d-fm2aa       1/1   Running 0        app=backend-v2,version=v2.19.0",
+      "discovery": "checked pod labels",
+      "scoreDelta": 40
+    },
+    {
+      "command": "kubectl get svc backend -o yaml",
+      "section": "kubernetes",
+      "output": "kind: Service\nmetadata:\n  name: backend\nspec:\n  selector:\n    app: backend\n  ports:\n  - port: 9000",
+      "discovery": "checked service selector",
+      "scoreDelta": 50
+    },
+    {
+      "command": "kubectl get endpoints backend",
+      "section": "kubernetes",
+      "output": "NAME      ENDPOINTS   AGE\nbackend   <none>      180d",
+      "discovery": "checked empty endpoints",
+      "scoreDelta": 50
+    },
+    {
+      "command": "kubectl describe svc backend",
+      "section": "kubernetes",
+      "output": "Selector: app=backend\nEndpoints: <none>\nPort: 9000/TCP",
+      "scoreDelta": 30
+    },
+    {
+      "command": "kubectl get events",
+      "section": "kubernetes",
+      "output": "15:00 Normal ScalingReplicaSet deployment/backend scaled up backend-7c8d\n15:02 Warning ServiceHasNoEndpoints service/backend has no active endpoints",
+      "scoreDelta": 20
+    },
+    {
+      "command": "kubectl logs deploy/ingress-nginx-controller",
+      "section": "nginx",
+      "output": "service prod/backend does not have any active endpoint\nGET /api 503",
+      "scoreDelta": 30
+    },
+    {
+      "command": "kubectl describe ingress backend",
+      "section": "nginx",
+      "output": "Rules:\n  Host app.example.com -> service backend:9000\nEvents: upstream service has no endpoints",
+      "scoreDelta": 20
+    },
+    {
+      "command": "kubectl logs deploy/backend",
+      "section": "backend",
+      "output": "INFO server started on :9000\nINFO ready=true\nNo request traffic received in last 5 minutes.",
+      "scoreDelta": 20
+    },
+    {
+      "command": "kubectl describe pod backend-7c8d",
+      "section": "backend",
+      "output": "Ready: True\nLabels: app=backend-v2, version=v2.19.0\nContainers: backend image backend:v2.19.0",
+      "scoreDelta": 30
+    },
+    {
+      "command": "argocd app get backend-prod",
+      "section": "argocd",
+      "output": "Application: backend-prod\nStatus: Synced\nHealth: Degraded\nRevision: c731abc\nMessage: service/backend has no endpoints",
+      "scoreDelta": 30
+    },
+    {
+      "command": "argocd app diff backend-prod",
+      "section": "argocd",
+      "output": "No live drift. Git desired Deployment labels and Service selector do not match.",
+      "scoreDelta": 40
+    }
+  ],
+  "actions": [
+    {
+      "id": "fix-selector",
+      "label": "Apply routing fix in Git",
+      "tone": "primary",
+      "output": "Service selector updated to app=backend-v2 and synced.\nEndpoints populated with 2 pod IPs.\nError rate: 72% -> 11% -> 0.3%\nService recovered.",
+      "scoreDelta": 130,
+      "restoreService": true
+    },
+    {
+      "id": "rollback",
+      "label": "ROLLBACK",
+      "tone": "primary",
+      "output": "Rolled back deployment labels to previous release.\nEndpoints restored.\nError rate: 72% -> 8% -> 0.3%\nService recovered.",
+      "scoreDelta": 100,
+      "restoreService": true
+    },
+    {
+      "id": "delete-pods",
+      "label": "Delete backend pods",
+      "tone": "danger",
+      "output": "Pods recreated with the same labels. Service endpoints are still empty.",
+      "scoreDelta": -30,
+      "penaltyReason": "Deleted pods without checking service routing"
+    }
+  ],
+  "managerEvents": [
+    {
+      "at": 180,
+      "message": "Kubernetes зелёный, но пользователи видят 503. Как так?"
+    },
+    {
+      "at": 600,
+      "message": "Можно просто рестартнуть ingress?"
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "id": "vm-002",
+  "name": "VM: диск забит логами",
+  "difficulty": "vm",
+  "duration": 1200,
+  "incidentNumber": "INCIDENT #004",
+  "incidentTitle": "Логин пользователей падает",
+  "incidentText": "Сайт открывается, но логин и оформление заказов периодически возвращают HTTP 500. Ночью включали debug logging для backend.",
+  "architecture": ["Internet", "Nginx", "Backend process", "PostgreSQL"],
+  "rootCause": "Раздел /var заполнен debug-логами backend; PostgreSQL не может создавать временные файлы и часть запросов падает.",
+  "rootCauseKeywords": ["disk", "диск", "/var", "debug", "log", "лог", "no space", "temp file", "мест"],
+  "initialState": {
+    "errorRate": 22,
+    "affectedUsers": 4180,
+    "serviceStatus": "DEGRADED"
+  },
+  "sections": [
+    {
+      "id": "vm",
+      "title": "VM",
+      "description": "Подключение к VM: процессы, диск, память, сеть, systemd.",
+      "commands": ["df -h", "du -sh /var/log/*", "journalctl -u backend", "systemctl status backend"]
+    },
+    {
+      "id": "backend",
+      "title": "Backend",
+      "description": "Логи и конфигурация приложения.",
+      "commands": ["backend logs", "backend config", "tail -n 80 app.log"]
+    },
+    {
+      "id": "postgres",
+      "title": "PostgreSQL",
+      "description": "Логи базы, активные запросы и состояние диска.",
+      "commands": ["postgres logs", "postgres active queries", "df -h /var/lib/postgresql"]
+    },
+    {
+      "id": "nginx",
+      "title": "Nginx",
+      "description": "HTTP ошибки, upstream и latency.",
+      "commands": ["tail nginx/access.log", "tail nginx/error.log", "nginx status"]
+    }
+  ],
+  "commands": [
+    {
+      "command": "df -h",
+      "section": "vm",
+      "output": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/vda1        80G   79G     0 100% /\n/dev/vdb1       120G   67G   47G  59% /var/lib/postgresql",
+      "discovery": "checked full root filesystem",
+      "scoreDelta": 40
+    },
+    {
+      "command": "du -sh /var/log/*",
+      "section": "vm",
+      "output": "61G /var/log/backend\n1.4G /var/log/nginx\n820M /var/log/journal\n44M /var/log/postgresql",
+      "discovery": "identified large backend logs",
+      "scoreDelta": 50
+    },
+    {
+      "command": "journalctl -u backend",
+      "aliases": ["backend logs"],
+      "section": "backend",
+      "output": "DEBUG request payload dump enabled\nWARN failed to write audit event: no space left on device\nERROR login request failed after audit write error",
+      "discovery": "checked backend logs",
+      "scoreDelta": 30
+    },
+    {
+      "command": "backend config",
+      "section": "backend",
+      "output": "APP_VERSION=v2.9.1\nLOG_LEVEL=debug\nAUDIT_LOG_PATH=/var/log/backend/audit.log",
+      "discovery": "checked backend config",
+      "scoreDelta": 30
+    },
+    {
+      "command": "postgres logs",
+      "section": "postgres",
+      "output": "ERROR: could not write to file \"base/pgsql_tmp/pgsql_tmp431.0\": No space left on device\nSTATEMENT: SELECT * FROM sessions WHERE token = $1",
+      "discovery": "confirmed no space error in db",
+      "scoreDelta": 40
+    },
+    {
+      "command": "postgres active queries",
+      "section": "postgres",
+      "output": "pid 431 backend SELECT sessions waiting=false temp_files=31\npid 442 backend INSERT audit_events waiting=false",
+      "scoreDelta": 20
+    },
+    {
+      "command": "df -h /var/lib/postgresql",
+      "section": "postgres",
+      "output": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/vdb1       120G   67G   47G  59% /var/lib/postgresql",
+      "scoreDelta": 20
+    },
+    {
+      "command": "tail nginx/access.log",
+      "section": "nginx",
+      "output": "POST /login 500 118ms\nPOST /checkout 500 132ms\nGET /catalog 200 34ms",
+      "scoreDelta": 10
+    },
+    {
+      "command": "tail nginx/error.log",
+      "section": "nginx",
+      "output": "upstream returned 500 while reading response header from upstream",
+      "scoreDelta": 10
+    },
+    {
+      "command": "nginx status",
+      "section": "nginx",
+      "output": "Active connections: 312\n5xx: 22%\nupstream backend: healthy",
+      "scoreDelta": 10
+    },
+    {
+      "command": "systemctl status backend",
+      "section": "vm",
+      "output": "backend.service active (running)\nMain PID: 1842\nEnvironment: LOG_LEVEL=debug",
+      "scoreDelta": 20
+    }
+  ],
+  "actions": [
+    {
+      "id": "rotate-logs",
+      "label": "Emergency cleanup",
+      "tone": "primary",
+      "output": "Compressed old debug logs and freed 58G.\nLOG_LEVEL changed back to info.\nError rate: 22% -> 5% -> 0.3%\nService recovered.",
+      "scoreDelta": 110,
+      "restoreService": true
+    },
+    {
+      "id": "rollback",
+      "label": "ROLLBACK",
+      "tone": "neutral",
+      "output": "Application rollback completed, but disk is still full. Error rate remains elevated.",
+      "scoreDelta": -5
+    },
+    {
+      "id": "restart-postgres",
+      "label": "Restart PostgreSQL",
+      "tone": "danger",
+      "output": "PostgreSQL restarted slowly because disk pressure remains. User-visible errors continue.",
+      "scoreDelta": -20,
+      "penaltyReason": "Restart PostgreSQL without disk diagnosis"
+    }
+  ],
+  "managerEvents": [
+    {
+      "at": 180,
+      "message": "Логин не работает. Это совсем плохо?"
+    },
+    {
+      "at": 480,
+      "message": "Можно просто увеличить сервер?"
+    }
+  ]
+}

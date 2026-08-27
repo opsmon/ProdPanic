@@ -1,0 +1,151 @@
+{
+  "id": "k8s-003",
+  "name": "Kubernetes: NetworkPolicy blocks Redis",
+  "difficulty": "kubernetes",
+  "duration": 1200,
+  "incidentNumber": "INCIDENT #009",
+  "incidentTitle": "Корзина и сессии падают",
+  "incidentText": "После изменения security manifests backend работает, PostgreSQL доступен, но операции сессий и корзины возвращают ошибки.",
+  "architecture": ["Internet", "Ingress Nginx", "Service", "Backend Deployment", "Redis + PostgreSQL", "ArgoCD"],
+  "rootCause": "Новая NetworkPolicy разрешила backend egress только к PostgreSQL и DNS, но заблокировала Redis на 6379.",
+  "rootCauseKeywords": ["networkpolicy", "network policy", "egress", "redis", "6379", "blocked", "deny", "политик", "сеть"],
+  "initialState": {
+    "errorRate": 31,
+    "affectedUsers": 9700,
+    "serviceStatus": "DEGRADED"
+  },
+  "sections": [
+    {
+      "id": "kubernetes",
+      "title": "Kubernetes",
+      "description": "Pods, events, network policies and services.",
+      "commands": ["kubectl get pods", "kubectl get networkpolicy", "kubectl describe networkpolicy backend-egress", "kubectl get svc redis postgres"]
+    },
+    {
+      "id": "backend",
+      "title": "Backend",
+      "description": "Application logs and connectivity probes.",
+      "commands": ["kubectl logs deploy/backend", "kubectl exec deploy/backend -- nc -vz redis 6379", "kubectl exec deploy/backend -- nc -vz postgres 5432"]
+    },
+    {
+      "id": "redis",
+      "title": "Redis",
+      "description": "Redis service and server logs.",
+      "commands": ["kubectl logs statefulset/redis", "redis ping"]
+    },
+    {
+      "id": "argocd",
+      "title": "ArgoCD",
+      "description": "Recent syncs and manifest diff.",
+      "commands": ["argocd app history backend-prod", "argocd app diff backend-prod"]
+    }
+  ],
+  "commands": [
+    {
+      "command": "kubectl get pods",
+      "section": "kubernetes",
+      "output": "backend-6f9d-2a1bc 1/1 Running 0\nbackend-6f9d-8k11d 1/1 Running 0\nredis-0 1/1 Running 0\npostgres-0 1/1 Running 0",
+      "scoreDelta": 20
+    },
+    {
+      "command": "kubectl get networkpolicy",
+      "section": "kubernetes",
+      "output": "NAME             POD-SELECTOR   AGE\nbackend-egress   app=backend    14m\ndefault-deny     <none>         90d",
+      "discovery": "checked network policies",
+      "scoreDelta": 40
+    },
+    {
+      "command": "kubectl describe networkpolicy backend-egress",
+      "section": "kubernetes",
+      "output": "PodSelector: app=backend\nPolicyTypes: Egress\nEgress rules:\n  to: namespaceSelector role=database, podSelector app=postgres port 5432\n  to: kube-dns port 53\nNo rule allows redis:6379.",
+      "discovery": "checked egress policy",
+      "scoreDelta": 60
+    },
+    {
+      "command": "kubectl get svc redis postgres",
+      "section": "kubernetes",
+      "output": "redis     ClusterIP 10.43.27.10 6379/TCP\npostgres  ClusterIP 10.43.92.31 5432/TCP",
+      "scoreDelta": 20
+    },
+    {
+      "command": "kubectl logs deploy/backend",
+      "section": "backend",
+      "output": "ERROR session store unavailable: i/o timeout connecting redis:6379\nINFO postgres health ok\nERROR cart write failed: redis timeout",
+      "discovery": "checked backend redis timeout",
+      "scoreDelta": 40
+    },
+    {
+      "command": "kubectl exec deploy/backend -- nc -vz redis 6379",
+      "section": "backend",
+      "output": "nc: redis (10.43.27.10:6379): Operation timed out",
+      "discovery": "tested backend to redis connectivity",
+      "scoreDelta": 40
+    },
+    {
+      "command": "kubectl exec deploy/backend -- nc -vz postgres 5432",
+      "section": "backend",
+      "output": "postgres (10.43.92.31:5432) open",
+      "scoreDelta": 30
+    },
+    {
+      "command": "kubectl logs statefulset/redis",
+      "section": "redis",
+      "output": "Ready to accept connections\nNo errors.",
+      "scoreDelta": 20
+    },
+    {
+      "command": "redis ping",
+      "section": "redis",
+      "output": "PONG from redis pod local shell",
+      "scoreDelta": 20
+    },
+    {
+      "command": "argocd app history backend-prod",
+      "section": "argocd",
+      "output": "22 14:40 egress-policy-cleanup\n23 15:00 restrict-backend-egress",
+      "scoreDelta": 30
+    },
+    {
+      "command": "argocd app diff backend-prod",
+      "section": "argocd",
+      "output": "No drift. Desired NetworkPolicy backend-egress excludes redis:6379.",
+      "scoreDelta": 40
+    }
+  ],
+  "actions": [
+    {
+      "id": "allow-redis-egress",
+      "label": "Apply policy fix",
+      "tone": "primary",
+      "output": "NetworkPolicy updated in Git and synced.\nbackend -> redis:6379 open\nError rate: 31% -> 7% -> 0.4%\nService recovered.",
+      "scoreDelta": 130,
+      "restoreService": true
+    },
+    {
+      "id": "rollback",
+      "label": "ROLLBACK",
+      "tone": "primary",
+      "output": "Rolled back security manifest revision.\nRedis connectivity restored.\nError rate: 31% -> 6% -> 0.4%\nService recovered.",
+      "scoreDelta": 100,
+      "restoreService": true
+    },
+    {
+      "id": "restart-redis",
+      "label": "Restart Redis",
+      "tone": "danger",
+      "output": "Redis restarted successfully. Backend egress is still blocked by NetworkPolicy.",
+      "scoreDelta": -20,
+      "penaltyReason": "Restarted healthy Redis"
+    }
+  ],
+  "managerEvents": [
+    {
+      "at": 180,
+      "message": "Логин плавает. Это Redis умер?"
+    },
+    {
+      "at": 540,
+      "message": "Безопасники говорят, что всё по плану. Нам легче не стало."
+    }
+  ]
+}

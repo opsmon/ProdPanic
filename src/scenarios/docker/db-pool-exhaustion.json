@@ -1,0 +1,157 @@
+{
+  "id": "docker-002",
+  "name": "Docker: connection pool storm",
+  "difficulty": "docker",
+  "duration": 1200,
+  "incidentNumber": "INCIDENT #006",
+  "incidentTitle": "PostgreSQL отказывает под нагрузкой",
+  "incidentText": "После масштабирования backend в Docker latency выросла, часть запросов получает 500. CPU на базе умеренный, но приложение жалуется на БД.",
+  "architecture": ["Internet", "Nginx container", "Backend containers", "Redis + PostgreSQL"],
+  "rootCause": "После scale до 6 containers каждый backend открыл DB_POOL_SIZE=80, суммарно превышая max_connections PostgreSQL.",
+  "rootCauseKeywords": ["pool", "db_pool", "connection", "connections", "max_connections", "слишком", "пул", "соедин"],
+  "initialState": {
+    "errorRate": 27,
+    "affectedUsers": 8600,
+    "serviceStatus": "DEGRADED"
+  },
+  "sections": [
+    {
+      "id": "docker",
+      "title": "Docker",
+      "description": "Compose state, replicas, env и runtime stats.",
+      "commands": ["docker compose ps", "docker ps", "docker stats", "docker inspect backend-1"]
+    },
+    {
+      "id": "backend",
+      "title": "Backend",
+      "description": "Application logs, env и connection pool behavior.",
+      "commands": ["docker logs backend-1", "docker logs backend-4", "env"]
+    },
+    {
+      "id": "postgres",
+      "title": "PostgreSQL",
+      "description": "Connections, active queries, limits and logs.",
+      "commands": ["postgres connections", "show max_connections", "postgres logs", "postgres active queries"]
+    },
+    {
+      "id": "nginx",
+      "title": "Nginx",
+      "description": "Gateway errors and latency.",
+      "commands": ["docker logs nginx", "nginx upstream"]
+    }
+  ],
+  "commands": [
+    {
+      "command": "docker compose ps",
+      "section": "docker",
+      "output": "backend-1 running\nbackend-2 running\nbackend-3 running\nbackend-4 running\nbackend-5 running\nbackend-6 running\npostgres running\nredis running\nnginx running",
+      "discovery": "checked replica count",
+      "scoreDelta": 30
+    },
+    {
+      "command": "docker ps",
+      "section": "docker",
+      "output": "6 backend containers Up\npostgres Up\nredis Up\nnginx Up",
+      "scoreDelta": 20
+    },
+    {
+      "command": "docker stats",
+      "section": "docker",
+      "output": "backend-* CPU 12-28% MEM 180-240MiB\npostgres CPU 34% MEM 3.8GiB\nnginx CPU 8%",
+      "scoreDelta": 10
+    },
+    {
+      "command": "docker inspect backend-1",
+      "section": "docker",
+      "output": "\"Env\": [\"DB_POOL_SIZE=80\", \"POSTGRES_HOST=postgres\", \"APP_VERSION=v3.12.0\"]",
+      "discovery": "checked backend env",
+      "scoreDelta": 40
+    },
+    {
+      "command": "docker logs backend-1",
+      "section": "backend",
+      "output": "ERROR pq: remaining connection slots are reserved for non-replication superuser connections\nWARN db pool wait timeout after 2s",
+      "discovery": "checked application db errors",
+      "scoreDelta": 40
+    },
+    {
+      "command": "docker logs backend-4",
+      "section": "backend",
+      "output": "INFO starting pool size=80\nERROR db acquire timeout",
+      "scoreDelta": 20
+    },
+    {
+      "command": "postgres connections",
+      "section": "postgres",
+      "output": "active connections: 297/300\nidle in transaction: 0\nwaiting clients: 141",
+      "discovery": "checked postgres connection saturation",
+      "scoreDelta": 50
+    },
+    {
+      "command": "show max_connections",
+      "section": "postgres",
+      "output": "max_connections\n300",
+      "scoreDelta": 20
+    },
+    {
+      "command": "postgres logs",
+      "section": "postgres",
+      "output": "FATAL: sorry, too many clients already\nLOG: connection received from backend-5",
+      "scoreDelta": 30
+    },
+    {
+      "command": "postgres active queries",
+      "section": "postgres",
+      "output": "Most sessions idle. Client connections are saturated before query execution.",
+      "scoreDelta": 30
+    },
+    {
+      "command": "docker logs nginx",
+      "section": "nginx",
+      "output": "upstream timed out while reading response header from backend\nPOST /api/order 504",
+      "scoreDelta": 10
+    },
+    {
+      "command": "nginx upstream",
+      "section": "nginx",
+      "output": "All backend containers healthy, p95 latency 4.8s, p99 latency 12.4s",
+      "scoreDelta": 20
+    }
+  ],
+  "actions": [
+    {
+      "id": "reduce-pool",
+      "label": "Apply backend config",
+      "tone": "primary",
+      "output": "DB_POOL_SIZE changed from 80 to 20 and backend containers rolled one by one.\nPostgreSQL connections: 297 -> 128\nError rate: 27% -> 6% -> 0.5%\nService recovered.",
+      "scoreDelta": 120,
+      "restoreService": true
+    },
+    {
+      "id": "rollback",
+      "label": "ROLLBACK",
+      "tone": "primary",
+      "output": "Rolled back compose scaling and env.\nError rate: 27% -> 7% -> 0.5%\nService recovered.",
+      "scoreDelta": 100,
+      "restoreService": true
+    },
+    {
+      "id": "scale-backend",
+      "label": "Scale backend +3",
+      "tone": "danger",
+      "output": "More replicas opened more DB connections. Error rate increased.",
+      "scoreDelta": -15,
+      "penaltyReason": "Scaled before checking bottleneck"
+    }
+  ],
+  "managerEvents": [
+    {
+      "at": 180,
+      "message": "Мы же масштабировали, почему стало хуже?"
+    },
+    {
+      "at": 520,
+      "message": "Можно просто увеличить базу?"
+    }
+  ]
+}
