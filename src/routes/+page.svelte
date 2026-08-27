@@ -756,17 +756,16 @@
 
   function architecturePath(link: DiagramLink) {
     const paths: Record<string, string> = {
-      'users->cdn': 'M 170 90 L 210 90',
-      'cdn->gateway': 'M 360 90 L 400 90',
-      'gateway->checkout': 'M 475 122 L 475 170 L 515 205',
-      'checkout->cart': 'M 425 265 L 335 265',
-      'checkout->redis-session': 'M 425 330 L 335 410',
-      'checkout->payment': 'M 695 250 L 770 250',
+      'users->lb': 'M 170 90 L 210 90',
+      'lb->frontend': 'M 360 90 L 400 90',
+      'frontend->backend': 'M 475 122 L 475 170 L 515 205',
+      'backend->redis-session': 'M 425 300 L 335 390',
+      'backend->payment': 'M 695 250 L 770 250',
       'payment->psp': 'M 920 250 L 980 250',
-      'checkout->redis-analytics': 'M 560 375 L 560 465',
-      'checkout->postgres': 'M 695 350 L 770 410',
-      'checkout->kafka': 'M 470 375 L 430 540 L 400 608',
-      'kafka->outbox': 'M 475 640 L 600 640'
+      'backend->redis-analytics': 'M 560 375 L 560 465',
+      'backend->postgres': 'M 695 350 L 770 390',
+      'postgres->outbox': 'M 845 442 L 845 520 L 670 520 L 670 608',
+      'outbox->kafka': 'M 670 640 L 770 640'
     };
     return paths[`${link.from}->${link.to}`];
   }
@@ -831,7 +830,7 @@
   }
 
   function architectureNodeClasses(node: DiagramNode) {
-    if (node.id === 'checkout') {
+    if (node.id === 'backend') {
       return 'h-[190px] w-[270px] flex-col gap-4 rounded-lg border-2 border-danger bg-[#641a22] text-danger shadow-[0_0_42px_rgba(255,107,107,0.18)]';
     }
 
@@ -854,14 +853,13 @@
   function architectureNodeStyle(node: DiagramNode) {
     const centers: Record<string, { x: number; y: number }> = {
       users: { x: 95, y: 90 },
-      cdn: { x: 285, y: 90 },
-      gateway: { x: 475, y: 90 },
-      checkout: { x: 560, y: 280 },
-      cart: { x: 260, y: 265 },
-      'redis-session': { x: 260, y: 410 },
+      lb: { x: 285, y: 90 },
+      frontend: { x: 475, y: 90 },
+      backend: { x: 560, y: 280 },
+      'redis-session': { x: 260, y: 390 },
       'redis-analytics': { x: 560, y: 500 },
-      kafka: { x: 400, y: 640 },
-      outbox: { x: 675, y: 640 },
+      outbox: { x: 595, y: 640 },
+      kafka: { x: 845, y: 640 },
       payment: { x: 845, y: 250 },
       postgres: { x: 845, y: 410 },
       psp: { x: 1055, y: 250 }
@@ -871,7 +869,7 @@
   }
 
   function architectureIconClasses(node: DiagramNode) {
-    return node.id === 'checkout' ? 'h-14 w-14' : 'h-7 w-7 shrink-0';
+    return node.id === 'backend' ? 'h-14 w-14' : 'h-7 w-7 shrink-0';
   }
 
   function architecturePrimaryLabel(node: DiagramNode) {
@@ -899,6 +897,9 @@
   function iconForNode(id: string) {
     const icons = {
       users: Users,
+      lb: Network,
+      frontend: Globe,
+      backend: Server,
       cdn: Globe,
       gateway: Network,
       auth: LockKeyhole,
@@ -1525,9 +1526,9 @@
                     style={architectureNodeStyle(node)}
                   >
                     <Icon class={architectureIconClasses(node)} strokeWidth={1.8} aria-hidden="true" />
-                    <span class={node.id === 'checkout' ? 'text-2xl text-white' : 'grid text-sm'}>
+                    <span class={node.id === 'backend' ? 'text-2xl text-white' : 'grid text-sm'}>
                       <span>{architecturePrimaryLabel(node)}</span>
-                      {#if node.id !== 'checkout' && architectureSecondaryLabel(node)}
+                      {#if node.id !== 'backend' && architectureSecondaryLabel(node)}
                         <span class="text-xs font-normal opacity-90">{architectureSecondaryLabel(node)}</span>
                       {/if}
                     </span>

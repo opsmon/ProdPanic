@@ -1,32 +1,32 @@
 {
   "id": "arch-001",
-  "name": "Architecture: Checkout cache trap",
+  "name": "Architecture: Backend idempotency trap",
   "difficulty": "architecture",
   "duration": 1500,
   "incidentNumber": "ARCH DRILL #001",
   "incidentTitle": "Checkout теряет заказы после релиза",
-  "incidentText": "15:06, через несколько минут после включения checkout-v4 на 50% трафика, резко выросли 500 на /checkout/confirm. Пользователь успевает нажать оплату, но часть запросов падает по timeout, часть заказов остаётся в PostgreSQL в статусе payment_pending без payment_intent_id, а outbox не публикует checkout-completed. PSP и PostgreSQL живы: проблема проявляется между Checkout API и idempotency-store. Нужно по схеме и evidence доказать, что checkout-v4 пишет idempotency keys не в writable Redis primary, а в redis-analytics, который read-only и закрыт NetworkPolicy для checkout namespace.",
+  "incidentText": "15:06, через несколько минут после включения backend-v4 на 50% трафика, резко выросли 500 на /checkout/confirm. Load Balancer и Frontend живы: страница открывается, но confirm-запросы из Frontend падают на Backend App. Часть заказов остаётся в PostgreSQL в статусе payment_pending без payment_intent_id, а outbox worker не публикует checkout-completed в Kafka. PSP и PostgreSQL здоровы: проблема проявляется между Backend App и idempotency-store. Нужно по схеме и evidence доказать, что backend-v4 пишет idempotency keys не в writable Redis primary, а в redis-analytics, который read-only и закрыт NetworkPolicy для backend namespace.",
   "architecture": [
-    "CDN/WAF",
-    "API Gateway",
-    "Checkout API",
-    "Cart API",
+    "Load Balancer",
+    "Frontend",
+    "Backend App",
     "Payment Orchestrator",
     "Redis primary",
     "Redis analytics",
     "PostgreSQL orders",
-    "Kafka checkout-events",
     "Outbox worker",
+    "Kafka checkout-events",
     "External PSP"
   ],
-  "rootCause": "checkout-v4 после релиза получил неверный IDEMPOTENCY_REDIS_URL: вместо writable redis-primary.prod.svc.cluster.local:6379 он обращается к redis-analytics.prod.svc.cluster.local:6379. Этот Redis является read-only репликой для BI/аналитики и закрыт NetworkPolicy для checkout namespace, поэтому SETNX по idempotency key таймаутится. PostgreSQL orders и outbox_events работают корректно, но получают неполные записи как downstream-эффект: orders.payment_intent_id остаётся NULL, а outbox_events не публикует checkout-completed до успешного payment intent.",
+  "rootCause": "backend-v4 после релиза получил неверный IDEMPOTENCY_REDIS_URL: вместо writable redis-primary.prod.svc.cluster.local:6379 он обращается к redis-analytics.prod.svc.cluster.local:6379. Этот Redis является read-only репликой для BI/аналитики и закрыт NetworkPolicy для backend namespace, поэтому SETNX по idempotency key таймаутится. PostgreSQL orders и outbox_events работают корректно, но получают неполные записи как downstream-эффект: orders.payment_intent_id остаётся NULL, а outbox_events не публикует checkout-completed до успешного payment intent.",
   "rootCauseKeywords": [
     "redis-analytics",
     "idempotency",
     "идемпотент",
     "dedup",
     "read-only",
-    "checkout-v4",
+    "backend-v4",
+    "backend",
     "timeout",
     "redis",
     "networkpolicy",
@@ -54,40 +54,31 @@
         "detail": "Mobile and web checkout traffic."
       },
       {
-        "id": "cdn",
-        "label": "CDN/WAF",
+        "id": "lb",
+        "label": "Load Balancer",
         "x": 22,
         "y": 8,
         "tone": "edge",
         "sectionId": "edge",
-        "detail": "No traffic blocks; 5xx generated behind gateway."
+        "detail": "TLS and routing are healthy; 5xx comes from backend upstream."
       },
       {
-        "id": "gateway",
-        "label": "API Gateway",
+        "id": "frontend",
+        "label": "Frontend",
         "x": 38,
         "y": 8,
-        "tone": "edge",
-        "sectionId": "gateway",
-        "detail": "Routes /checkout and /payment to internal services."
+        "tone": "app",
+        "sectionId": "frontend",
+        "detail": "Web checkout UI is served successfully; confirm API calls fail downstream."
       },
       {
-        "id": "checkout",
-        "label": "Checkout API v4",
+        "id": "backend",
+        "label": "Backend App v4",
         "x": 47,
         "y": 34,
         "tone": "risk",
-        "sectionId": "checkout",
+        "sectionId": "backend",
         "detail": "New idempotency store dependency was added in v4."
-      },
-      {
-        "id": "cart",
-        "label": "Cart API",
-        "x": 19,
-        "y": 31,
-        "tone": "app",
-        "sectionId": "cart",
-        "detail": "Cart reads are healthy."
       },
       {
         "id": "payment",
@@ -114,7 +105,7 @@
         "y": 62,
         "tone": "risk",
         "sectionId": "redis",
-        "detail": "Read-only analytics endpoint is not reachable from checkout namespace."
+        "detail": "Read-only analytics endpoint is not reachable from backend namespace."
       },
       {
         "id": "postgres",
@@ -159,7 +150,7 @@
         "y": 57,
         "tone": "control",
         "sectionId": "observability",
-        "detail": "Dashboards show Redis timeout spike from checkout-v4."
+        "detail": "Dashboards show Redis timeout spike from backend-v4."
       },
       {
         "id": "logging",
@@ -174,30 +165,24 @@
     "links": [
       {
         "from": "users",
-        "to": "cdn",
+        "to": "lb",
         "status": "ok",
         "direction": "forward"
       },
       {
-        "from": "cdn",
-        "to": "gateway",
+        "from": "lb",
+        "to": "frontend",
         "status": "ok",
         "direction": "forward"
       },
       {
-        "from": "gateway",
-        "to": "checkout",
+        "from": "frontend",
+        "to": "backend",
         "status": "ok",
         "direction": "forward"
       },
       {
-        "from": "checkout",
-        "to": "cart",
-        "status": "ok",
-        "direction": "forward"
-      },
-      {
-        "from": "checkout",
+        "from": "backend",
         "to": "payment",
         "status": "ok",
         "direction": "forward"
@@ -209,33 +194,33 @@
         "direction": "forward"
       },
       {
-        "from": "checkout",
+        "from": "backend",
         "to": "redis-session",
         "status": "ok",
         "direction": "forward"
       },
       {
-        "from": "checkout",
+        "from": "backend",
         "to": "redis-analytics",
         "status": "blocked",
         "direction": "forward"
       },
       {
-        "from": "checkout",
+        "from": "backend",
         "to": "postgres",
         "status": "ok",
         "direction": "forward"
       },
       {
-        "from": "checkout",
-        "to": "kafka",
+        "from": "postgres",
+        "to": "outbox",
         "status": "ok",
         "direction": "forward"
       },
       {
-        "from": "kafka",
-        "to": "outbox",
-        "status": "degraded",
+        "from": "outbox",
+        "to": "kafka",
+        "status": "ok",
         "direction": "forward"
       }
     ]
@@ -248,64 +233,31 @@
   "sections": [
     {
       "id": "edge",
-      "title": "Edge",
-      "description": "CDN/WAF and edge status for checkout traffic.",
+      "title": "Load Balancer",
+      "description": "Load balancer health, upstream routing and 5xx split for checkout traffic.",
       "commands": [
-        "show edge errors",
-        "show waf events"
+        "show lb health",
+        "show lb 5xx"
       ]
     },
     {
-      "id": "gateway",
-      "title": "API Gateway",
-      "description": "Route-level errors and upstream mapping.",
+      "id": "frontend",
+      "title": "Frontend",
+      "description": "Frontend release, browser errors and API calls to Backend App.",
       "commands": [
-        "show gateway routes",
-        "show gateway 5xx"
+        "show frontend health",
+        "show frontend errors"
       ]
     },
     {
-      "id": "checkout",
-      "title": "Checkout API",
-      "description": "Checkout-v4 logs, release config and dependency checks.",
+      "id": "backend",
+      "title": "Backend App",
+      "description": "backend-v4 logs, release config and dependency checks.",
       "commands": [
-        "show checkout logs",
-        "show checkout config",
+        "show backend logs",
+        "show backend config",
         "probe idempotency store",
         "show rollout"
-      ]
-    },
-    {
-      "id": "flags",
-      "title": "Feature Flags",
-      "description": "Rollout history and active checkout flags.",
-      "commands": [
-        "show flags",
-        "show flag history"
-      ]
-    },
-    {
-      "id": "auth",
-      "title": "Auth",
-      "description": "Token validation and auth dependency health.",
-      "commands": [
-        "show auth health"
-      ]
-    },
-    {
-      "id": "cart",
-      "title": "Cart",
-      "description": "Cart reads and cart dependency health.",
-      "commands": [
-        "show cart health"
-      ]
-    },
-    {
-      "id": "pricing",
-      "title": "Pricing",
-      "description": "Pricing quotes and latency during checkout confirm.",
-      "commands": [
-        "show pricing health"
       ]
     },
     {
@@ -374,94 +326,64 @@
   ],
   "commands": [
     {
-      "command": "show edge errors",
+      "command": "show lb health",
       "section": "edge",
-      "output": "CDN 5xx rate: 0.3%\nWAF blocks: baseline\nOrigin 5xx concentrated on /checkout/confirm.",
+      "output": "TLS handshakes: normal\nLoad balancer 5xx: 0.3%\nUpstream backend-app 5xx on /checkout/confirm: 43%\nNo unhealthy frontend targets.",
       "scoreDelta": 20
     },
     {
-      "command": "show waf events",
+      "command": "show lb 5xx",
       "section": "edge",
-      "output": "No new WAF rule hits for checkout traffic. Bot and geo filters unchanged.",
-      "scoreDelta": 15
-    },
-    {
-      "command": "show gateway routes",
-      "section": "gateway",
-      "output": "/checkout/* -> checkout-api.prod.svc:8080\n/payment/* -> payment-orchestrator.prod.svc:8080\n/auth/* -> auth.prod.svc:8080",
-      "scoreDelta": 15
-    },
-    {
-      "command": "show gateway 5xx",
-      "section": "gateway",
-      "output": "15:06-15:18 /checkout/confirm 43% 5xx\n15:06-15:18 /cart 0.8% 5xx\n15:06-15:18 /payment 3.1% 5xx",
-      "discovery": "localized gateway 5xx to checkout",
+      "output": "15:06-15:18 /checkout/confirm -> backend-app-v4 43% 5xx\n15:06-15:18 /assets/* -> frontend 0.0% 5xx\n15:06-15:18 /api/cart -> backend-app-v4 0.8% 5xx",
+      "discovery": "localized lb 5xx to backend confirm route",
       "scoreDelta": 35
     },
     {
-      "command": "show checkout logs",
-      "section": "checkout",
+      "command": "show frontend health",
+      "section": "frontend",
+      "output": "frontend-prod release=v2026.08.27.3\nStatic assets: 200 OK\nHydration errors: none\nBackend base URL: https://app.example.com/api",
+      "scoreDelta": 15
+    },
+    {
+      "command": "show frontend errors",
+      "section": "frontend",
+      "output": "Browser RUM: checkout page loads successfully\nPOST /api/checkout/confirm -> 500 for backend-v4 cohort\nClient retry count: 3x baseline\nNo spike in JS exceptions.",
+      "discovery": "frontend is healthy and backend confirm route fails",
+      "scoreDelta": 30
+    },
+    {
+      "command": "show backend logs",
+      "section": "backend",
       "output": "ERROR idempotency SETNX timeout key=idem_pay_7fb redis=redis-analytics.prod.svc.cluster.local:6379 timeout=2500ms\nWARN created order=ord_98221 status=payment_pending payment_intent_id=NULL because idempotency record was not written\nERROR checkout confirm failed after 2.5s dependency=idempotency-store",
-      "discovery": "checkout logs show idempotency redis timeout",
+      "discovery": "backend logs show idempotency redis timeout",
       "scoreDelta": 60
     },
     {
-      "command": "show checkout config",
-      "section": "checkout",
-      "output": "VERSION=checkout-v4.8.1\nIDEMPOTENCY_BACKEND=redis\nIDEMPOTENCY_REDIS_URL=redis-analytics.prod.svc.cluster.local:6379\nEXPECTED_IDEMPOTENCY_REDIS_URL=redis-primary.prod.svc.cluster.local:6379\nSESSION_REDIS_URL=redis-primary.prod.svc.cluster.local:6379\nORDER_DB_DSN=postgres-orders.prod.svc.cluster.local:5432/orders",
+      "command": "show backend config",
+      "section": "backend",
+      "output": "VERSION=backend-v4.8.1\nIDEMPOTENCY_BACKEND=redis\nIDEMPOTENCY_REDIS_URL=redis-analytics.prod.svc.cluster.local:6379\nEXPECTED_IDEMPOTENCY_REDIS_URL=redis-primary.prod.svc.cluster.local:6379\nSESSION_REDIS_URL=redis-primary.prod.svc.cluster.local:6379\nORDER_DB_DSN=postgres-orders.prod.svc.cluster.local:5432/orders",
       "discovery": "found wrong idempotency redis endpoint",
       "scoreDelta": 70
     },
     {
       "command": "probe idempotency store",
-      "section": "checkout",
-      "output": "nc -vz redis-analytics.prod.svc.cluster.local 6379\nOperation timed out from checkout namespace\n\nnc -vz redis-primary.prod.svc.cluster.local 6379\nopen\n\nSETNX idem_pay_probe checkout:v4 -> OK on redis-primary",
-      "discovery": "proved checkout cannot reach redis analytics",
+      "section": "backend",
+      "output": "nc -vz redis-analytics.prod.svc.cluster.local 6379\nOperation timed out from backend namespace\n\nnc -vz redis-primary.prod.svc.cluster.local 6379\nopen\n\nSETNX idem_pay_probe backend:v4 -> OK on redis-primary",
+      "discovery": "proved backend cannot reach redis analytics",
       "scoreDelta": 65
     },
     {
       "command": "show rollout",
-      "section": "checkout",
-      "output": "15:00 checkout-v4 enabled for 10%\n15:06 checkout-v4 enabled for 50%\n15:07 checkout 5xx crosses alert threshold",
+      "section": "backend",
+      "output": "15:00 backend-v4 enabled for 10%\n15:06 backend-v4 enabled for 50%\n15:07 checkout-confirm 5xx crosses alert threshold",
       "discovery": "correlated rollout with incident",
       "scoreDelta": 45
-    },
-    {
-      "command": "show flags",
-      "section": "flags",
-      "output": "checkout-v4: 50% users\nnew-idempotency-store: enabled when checkout-v4=true\nfallback-old-store: disabled",
-      "discovery": "checked feature flag state",
-      "scoreDelta": 40
-    },
-    {
-      "command": "show flag history",
-      "section": "flags",
-      "output": "14:58 create checkout-v4 rule\n15:00 rollout 10%\n15:06 rollout 50%\n15:07 alert checkout-confirm-5xx",
-      "scoreDelta": 25
-    },
-    {
-      "command": "show auth health",
-      "section": "auth",
-      "output": "Auth success rate: 99.96%\nToken validation p95: 38ms\nNo increase in 401/403 responses.",
-      "scoreDelta": 20
-    },
-    {
-      "command": "show cart health",
-      "section": "cart",
-      "output": "Cart API p95: 92ms\nCart read error rate: 0.8%\nNo dependency saturation.",
-      "scoreDelta": 20
-    },
-    {
-      "command": "show pricing health",
-      "section": "pricing",
-      "output": "Pricing quote p95: 110ms\nError rate: 0.4%\nNo price-cache misses above baseline.",
-      "scoreDelta": 20
     },
     {
       "command": "show payment retries",
       "section": "payment",
       "output": "Retry rate: 22x baseline\nDuplicate payment intent attempts: 318 in 12m\nPSP errors: mostly idempotency mismatch from client retry.",
-      "discovery": "payment retries are symptom of checkout idempotency failure",
+      "discovery": "payment retries are symptom of backend idempotency failure",
       "scoreDelta": 40
     },
     {
@@ -479,8 +401,8 @@
     {
       "command": "show redis topology",
       "section": "redis",
-      "output": "redis-primary: writable master, prod checkout namespace allowed, used for sessions and idempotency\nredis-analytics: read-only replica for BI jobs, NetworkPolicy allows analytics namespace only\nExpected contract: checkout writes idempotency keys only to redis-primary with TTL=24h",
-      "discovery": "redis analytics is not a checkout dependency",
+      "output": "redis-primary: writable master, backend namespace allowed, used for sessions and idempotency\nredis-analytics: read-only replica for BI jobs, NetworkPolicy allows analytics namespace only\nExpected contract: backend writes idempotency keys only to redis-primary with TTL=24h",
+      "discovery": "redis analytics is not a backend dependency",
       "scoreDelta": 45
     },
     {
@@ -489,14 +411,14 @@
         "probe redis-session"
       ],
       "section": "redis",
-      "output": "redis-primary PING -> PONG\nROLE -> master\nSETNX idem_pay_probe checkout:v4 -> 1\nTTL idem_pay_probe -> 86400",
+      "output": "redis-primary PING -> PONG\nROLE -> master\nSETNX idem_pay_probe backend:v4 -> 1\nTTL idem_pay_probe -> 86400",
       "scoreDelta": 20
     },
     {
       "command": "probe redis-analytics",
       "section": "redis",
-      "output": "from analytics namespace: PING -> PONG\nfrom checkout namespace: timeout by NetworkPolicy\nROLE -> replica\nCONFIG get replica-read-only -> yes",
-      "discovery": "redis analytics blocked from checkout namespace",
+      "output": "from analytics namespace: PING -> PONG\nfrom backend namespace: timeout by NetworkPolicy\nROLE -> replica\nCONFIG get replica-read-only -> yes",
+      "discovery": "redis analytics blocked from backend namespace",
       "scoreDelta": 55
     },
     {
@@ -541,23 +463,23 @@
     {
       "command": "show traces",
       "section": "observability",
-      "output": "Trace checkout-confirm p95=2400ms\nSpan idempotency-store SETNX redis-analytics -> timeout 2500ms\nSpan orders.insert postgres-orders -> 41ms\nSpan payment-orchestrator.create-intent -> skipped after idempotency timeout",
+      "output": "Trace frontend POST /api/checkout/confirm p95=2400ms\nSpan backend-app idempotency-store SETNX redis-analytics -> timeout 2500ms\nSpan orders.insert postgres-orders -> 41ms\nSpan payment-orchestrator.create-intent -> skipped after idempotency timeout",
       "discovery": "traces isolate idempotency store timeout",
       "scoreDelta": 55
     },
     {
       "command": "show service map",
       "section": "observability",
-      "output": "Only checkout-api -> redis-analytics edge is red.\ncheckout-api -> cart/postgres edges green.\npayment-orchestrator -> PSP green.\noutbox lag is yellow because checkout-completed is waiting for payment_intent_id.",
+      "output": "Only backend-app -> redis-analytics edge is red.\nbackend-app -> postgres edge is green.\npayment-orchestrator -> PSP green.\noutbox lag is yellow because checkout-completed is waiting for payment_intent_id.",
       "scoreDelta": 35
     }
   ],
   "actions": [
     {
-      "id": "disable-checkout-v4",
-      "label": "Disable checkout-v4 flag",
+      "id": "disable-backend-v4",
+      "label": "Disable backend-v4 flag",
       "tone": "primary",
-      "output": "Feature flag checkout-v4 disabled. Traffic returned to the previous checkout path and writable redis-primary idempotency store.\nError rate: 43% -> 4% -> 0.6%.\nManual reconciliation queue created for payment_pending orders without payment_intent_id.",
+      "output": "Feature flag backend-v4 disabled. Traffic returned to the previous backend path and writable redis-primary idempotency store.\nError rate: 43% -> 4% -> 0.6%.\nManual reconciliation queue created for payment_pending orders without payment_intent_id.",
       "scoreDelta": 130,
       "restoreService": true,
       "rootCauseDiscovery": "safe mitigation through feature flag"
@@ -575,15 +497,15 @@
       "id": "restart-payment",
       "label": "Restart payment service",
       "tone": "danger",
-      "output": "Payment orchestrator restarted. PSP calls are still healthy; checkout still times out on idempotency store.",
+      "output": "Payment orchestrator restarted. PSP calls are still healthy; Backend App still times out on idempotency store.",
       "scoreDelta": -30,
       "penaltyReason": "Restarted healthy downstream service"
     },
     {
-      "id": "scale-checkout",
-      "label": "Scale checkout pods",
+      "id": "scale-backend",
+      "label": "Scale backend pods",
       "tone": "neutral",
-      "output": "Checkout scaled from 8 to 16 pods. More pods now wait on the same blocked Redis dependency; error rate unchanged.",
+      "output": "Backend App scaled from 8 to 16 pods. More pods now wait on the same blocked Redis dependency; error rate unchanged.",
       "scoreDelta": -10,
       "penaltyReason": "Scaled before isolating dependency failure"
     }
@@ -595,16 +517,16 @@
     },
     {
       "at": 720,
-      "message": "Финансы спрашивают, можно ли продолжать принимать оплаты или стопать checkout?"
+      "message": "Финансы спрашивают, можно ли продолжать принимать оплаты или стопать backend-v4?"
     }
   ],
   "interviewerQuestions": [
     {
       "at": 20,
-      "question": "С чего начнёшь на этой схеме: с edge, checkout, payment или базы, и почему?",
+      "question": "С чего начнёшь на этой схеме: с Load Balancer, Frontend, Backend App, payment или базы, и почему?",
       "idealKeywords": [
         "impact",
-        "checkout",
+        "backend",
         "путь",
         "5xx",
         "recent change"
@@ -615,7 +537,7 @@
       "at": 160,
       "question": "Какие две связи на схеме ты проверишь перед рестартами?",
       "idealKeywords": [
-        "checkout",
+        "backend",
         "redis",
         "payment",
         "postgres",
