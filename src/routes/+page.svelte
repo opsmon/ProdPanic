@@ -756,16 +756,16 @@
 
   function architecturePath(link: DiagramLink) {
     const paths: Record<string, string> = {
-      'users->lb': 'M 170 90 L 210 90',
-      'lb->frontend': 'M 360 90 L 400 90',
-      'frontend->backend': 'M 475 122 L 475 170 L 515 205',
-      'backend->redis-session': 'M 425 300 L 335 390',
-      'backend->payment': 'M 695 250 L 770 250',
-      'payment->psp': 'M 920 250 L 980 250',
-      'backend->redis-analytics': 'M 560 375 L 560 465',
-      'backend->postgres': 'M 695 350 L 770 390',
-      'postgres->outbox': 'M 845 442 L 845 520 L 670 520 L 670 608',
-      'outbox->kafka': 'M 670 640 L 770 640'
+      'users->cdn': 'M 170 90 L 210 90',
+      'cdn->lb': 'M 360 90 L 420 90',
+      'lb->frontend': 'M 495 122 L 495 158',
+      'frontend->backend': 'M 495 222 L 495 255',
+      'frontend->redis-session': 'M 420 190 L 325 190',
+      'backend->postgres': 'M 495 445 L 495 520',
+      'postgres->outbox': 'M 495 584 L 495 608',
+      'outbox->kafka': 'M 570 640 L 695 640',
+      'backend->payment': 'M 630 350 L 705 350',
+      'payment->psp': 'M 855 350 L 935 350'
     };
     return paths[`${link.from}->${link.to}`];
   }
@@ -831,12 +831,14 @@
 
   function architectureNodeClasses(node: DiagramNode) {
     if (node.id === 'backend') {
-      return 'h-[190px] w-[270px] flex-col gap-4 rounded-lg border-2 border-danger bg-[#641a22] text-danger shadow-[0_0_42px_rgba(255,107,107,0.18)]';
+      return 'h-[190px] w-[270px] flex-col gap-4 rounded-lg border-2 border-sky-300 bg-[#102033] text-sky-100 shadow-[0_0_42px_rgba(56,189,248,0.16)]';
     }
 
     const tone =
       node.tone === 'edge'
         ? 'border-sky-400 bg-[#08213b] text-sky-100 shadow-[0_0_24px_rgba(56,189,248,0.16)]'
+        : node.tone === 'app'
+          ? 'border-slate-300/80 bg-[#17212b] text-slate-100 shadow-[0_0_24px_rgba(148,163,184,0.12)]'
         : node.tone === 'data'
           ? 'border-ok/80 bg-[#0f2c1b] text-ok shadow-[0_0_24px_rgba(110,231,168,0.12)]'
           : node.tone === 'queue'
@@ -853,16 +855,16 @@
   function architectureNodeStyle(node: DiagramNode) {
     const centers: Record<string, { x: number; y: number }> = {
       users: { x: 95, y: 90 },
-      lb: { x: 285, y: 90 },
-      frontend: { x: 475, y: 90 },
-      backend: { x: 560, y: 280 },
-      'redis-session': { x: 260, y: 390 },
-      'redis-analytics': { x: 560, y: 500 },
-      outbox: { x: 595, y: 640 },
-      kafka: { x: 845, y: 640 },
-      payment: { x: 845, y: 250 },
-      postgres: { x: 845, y: 410 },
-      psp: { x: 1055, y: 250 }
+      cdn: { x: 285, y: 90 },
+      lb: { x: 495, y: 90 },
+      frontend: { x: 495, y: 190 },
+      backend: { x: 495, y: 350 },
+      'redis-session': { x: 250, y: 190 },
+      postgres: { x: 495, y: 552 },
+      outbox: { x: 495, y: 640 },
+      kafka: { x: 770, y: 640 },
+      payment: { x: 780, y: 350 },
+      psp: { x: 1010, y: 350 }
     };
     const center = centers[node.id] ?? { x: node.x * 11.8, y: node.y * 7.2 };
     return `left: ${center.x}px; top: ${center.y}px;`;
@@ -873,6 +875,8 @@
   }
 
   function architecturePrimaryLabel(node: DiagramNode) {
+    if (node.id === 'lb') return 'Load Balancer';
+    if (node.id === 'frontend') return 'Frontend';
     if (node.id === 'redis-session') return 'Redis';
     if (node.id === 'redis-analytics') return 'Redis';
     if (node.id === 'postgres') return 'PostgreSQL';
@@ -884,9 +888,11 @@
   }
 
   function architectureSecondaryLabel(node: DiagramNode) {
+    if (node.id === 'lb') return 'Ingress';
+    if (node.id === 'frontend') return 'nginx';
     if (node.id === 'redis-session') return 'primary';
     if (node.id === 'redis-analytics') return 'analytics';
-    if (node.id === 'postgres') return 'orders';
+    if (node.id === 'postgres') return 'orders + outbox';
     if (node.id === 'kafka') return 'checkout-events';
     if (node.id === 'payment') return 'Orchestrator';
     if (node.id === 'observability') return 'Prometheus / Grafana';
@@ -897,10 +903,10 @@
   function iconForNode(id: string) {
     const icons = {
       users: Users,
-      lb: Network,
-      frontend: Globe,
-      backend: Server,
       cdn: Globe,
+      lb: Network,
+      frontend: Server,
+      backend: ShoppingCart,
       gateway: Network,
       auth: LockKeyhole,
       feature: Flag,
