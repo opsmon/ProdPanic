@@ -756,22 +756,22 @@
 
   function architecturePath(link: DiagramLink) {
     const paths: Record<string, string> = {
-      'users->cdn': 'M 13.6 8 L 15.4 8',
-      'cdn->gateway': 'M 28.6 8 L 31.4 8',
-      'gateway->auth': 'M 44.6 8 L 47.4 8',
-      'auth->feature': 'M 60.6 8 L 63.4 8',
-      'gateway->checkout': 'M 38 13 L 38 19.8',
-      'auth->checkout': 'M 54 13 L 51 19.8',
-      'checkout->cart': 'M 35.2 31 L 25.6 31',
-      'checkout->redis-session': 'M 35.6 39.8 L 25.6 49',
-      'checkout->payment': 'M 58.4 30.3 L 61.4 28.2',
-      'checkout->pricing': 'M 58.4 38.4 L 61.4 40',
-      'checkout->postgres': 'M 58.4 43.8 L 61.4 50',
-      'payment->psp': 'M 74.6 27 L 79.2 27',
-      'checkout->redis-analytics': 'M 47 47.6 L 47 56.8',
-      'checkout->kafka': 'M 40.4 47.4 L 31.2 80.8',
-      'checkout->outbox': 'M 50.5 47.4 L 55 80.8',
-      'kafka->outbox': 'M 37.6 86 L 48.4 86'
+      'users->cdn': 'M 170 75 L 205 75',
+      'cdn->gateway': 'M 355 75 L 390 75',
+      'gateway->auth': 'M 540 75 L 575 75',
+      'auth->feature': 'M 725 75 L 760 75',
+      'gateway->checkout': 'M 465 107 L 465 150 L 520 185',
+      'auth->checkout': 'M 650 107 L 620 185',
+      'checkout->cart': 'M 425 260 L 335 260',
+      'checkout->redis-session': 'M 425 325 L 335 410',
+      'checkout->payment': 'M 695 250 L 770 235',
+      'checkout->pricing': 'M 695 320 L 770 345',
+      'checkout->postgres': 'M 695 360 L 770 455',
+      'payment->psp': 'M 920 235 L 990 235',
+      'checkout->redis-analytics': 'M 560 375 L 560 433',
+      'checkout->kafka': 'M 470 375 L 430 525 L 400 593',
+      'checkout->outbox': 'M 665 375 L 705 525 L 675 593',
+      'kafka->outbox': 'M 475 625 L 600 625'
     };
     return paths[`${link.from}->${link.to}`];
   }
@@ -837,7 +837,7 @@
 
   function architectureNodeClasses(node: DiagramNode) {
     if (node.id === 'checkout') {
-      return 'min-h-[190px] w-[270px] flex-col gap-4 rounded-lg border-2 border-danger bg-[#641a22] text-danger shadow-[0_0_42px_rgba(255,107,107,0.18)]';
+      return 'h-[190px] w-[270px] flex-col gap-4 rounded-lg border-2 border-danger bg-[#641a22] text-danger shadow-[0_0_42px_rgba(255,107,107,0.18)]';
     }
 
     const tone =
@@ -853,7 +853,29 @@
                 ? 'border-danger/80 bg-[#2a1014] text-danger shadow-[0_0_24px_rgba(255,107,107,0.14)]'
                 : 'border-signal/80 bg-[#2a2110] text-signal shadow-[0_0_24px_rgba(248,201,90,0.12)]';
 
-    return `min-h-16 w-[150px] gap-3 rounded-md border-2 px-4 text-sm ${tone}`;
+    return `h-16 w-[150px] gap-3 rounded-md border-2 px-4 text-sm ${tone}`;
+  }
+
+  function architectureNodeStyle(node: DiagramNode) {
+    const centers: Record<string, { x: number; y: number }> = {
+      users: { x: 95, y: 75 },
+      cdn: { x: 280, y: 75 },
+      gateway: { x: 465, y: 75 },
+      auth: { x: 650, y: 75 },
+      feature: { x: 835, y: 75 },
+      checkout: { x: 560, y: 280 },
+      cart: { x: 260, y: 260 },
+      'redis-session': { x: 260, y: 410 },
+      'redis-analytics': { x: 560, y: 465 },
+      kafka: { x: 400, y: 625 },
+      outbox: { x: 675, y: 625 },
+      payment: { x: 845, y: 235 },
+      pricing: { x: 845, y: 345 },
+      postgres: { x: 845, y: 455 },
+      psp: { x: 1065, y: 235 }
+    };
+    const center = centers[node.id] ?? { x: node.x * 11.8, y: node.y * 7.2 };
+    return `left: ${center.x}px; top: ${center.y}px;`;
   }
 
   function architectureIconClasses(node: DiagramNode) {
@@ -1456,22 +1478,22 @@
 
             <div class="overflow-auto bg-[#03080d]">
               <div
-                class="relative h-[660px] min-w-[1180px] overflow-hidden bg-[#061019] sm:h-[720px]"
+                class="relative mx-auto h-[720px] w-[1180px] overflow-hidden bg-[#061019]"
                 style="background-image: linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px), linear-gradient(rgba(59, 130, 246, 0.045) 1px, transparent 1px); background-size: 48px 48px;"
               >
-                <svg class="pointer-events-none absolute inset-0 z-10 h-full w-full" viewBox="0 0 100 100" aria-hidden="true">
+                <svg class="pointer-events-none absolute inset-0 z-10 h-full w-full" viewBox="0 0 1180 720" aria-hidden="true">
                   <defs>
-                    <marker id="arrow-ok" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e2e8f0" />
+                    <marker id="arrow-ok" viewBox="0 0 14 14" refX="12" refY="7" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                      <path d="M 1 1 L 13 7 L 1 13 z" fill="#e2e8f0" />
                     </marker>
-                    <marker id="arrow-degraded" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f8c95a" />
+                    <marker id="arrow-degraded" viewBox="0 0 14 14" refX="12" refY="7" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                      <path d="M 1 1 L 13 7 L 1 13 z" fill="#f8c95a" />
                     </marker>
-                    <marker id="arrow-blocked" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff6b6b" />
+                    <marker id="arrow-blocked" viewBox="0 0 14 14" refX="12" refY="7" markerWidth="16" markerHeight="16" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                      <path d="M 1 1 L 13 7 L 1 13 z" fill="#ff6b6b" />
                     </marker>
-                    <marker id="arrow-unknown" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+                    <marker id="arrow-unknown" viewBox="0 0 14 14" refX="12" refY="7" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                      <path d="M 1 1 L 13 7 L 1 13 z" fill="#64748b" />
                     </marker>
                   </defs>
                   {#each diagramLines(scenario) as line}
@@ -1481,7 +1503,7 @@
                         class={lineClass(line.status)}
                         fill="none"
                         opacity={line.status === 'blocked' ? '0.95' : '0.82'}
-                        stroke-width={line.status === 'blocked' ? '0.58' : '0.34'}
+                        stroke-width={line.status === 'blocked' ? '5' : '3'}
                         stroke-linecap="round"
                         stroke-linejoin="round"
                         marker-start={markerStart(line)}
@@ -1508,7 +1530,7 @@
                   {@const Icon = iconForNode(node.id)}
                   <div
                     class={`absolute z-20 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center text-center font-mono font-semibold leading-tight ${architectureNodeClasses(node)}`}
-                    style={`left: ${node.x}%; top: ${node.y}%`}
+                    style={architectureNodeStyle(node)}
                   >
                     <Icon class={architectureIconClasses(node)} strokeWidth={1.8} aria-hidden="true" />
                     <span class={node.id === 'checkout' ? 'text-2xl text-white' : 'grid text-sm'}>
@@ -1522,7 +1544,7 @@
 
                 <div
                   class="absolute z-20 grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-dashed border-slate-400/60 bg-[#111827]/55 p-4"
-                  style="left: 86%; top: 65%; width: 220px;"
+                  style="left: 1060px; top: 510px; width: 220px;"
                 >
                   {#if groupedNode(scenario, 'observability')}
                     {@const observability = groupedNode(scenario, 'observability')}
