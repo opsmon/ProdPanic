@@ -66,24 +66,6 @@
         "detail": "Routes /checkout and /payment to internal services."
       },
       {
-        "id": "auth",
-        "label": "Auth Service",
-        "x": 54,
-        "y": 8,
-        "tone": "control",
-        "sectionId": "auth",
-        "detail": "Token validation is healthy."
-      },
-      {
-        "id": "feature",
-        "label": "Feature Flags",
-        "x": 70,
-        "y": 8,
-        "tone": "control",
-        "sectionId": "flags",
-        "detail": "checkout-v4 flag was enabled for 50% of traffic."
-      },
-      {
         "id": "checkout",
         "label": "Checkout API v4",
         "x": 47,
@@ -100,15 +82,6 @@
         "tone": "app",
         "sectionId": "cart",
         "detail": "Cart reads are healthy."
-      },
-      {
-        "id": "pricing",
-        "label": "Pricing API",
-        "x": 68,
-        "y": 40,
-        "tone": "app",
-        "sectionId": "pricing",
-        "detail": "Pricing latency is normal."
       },
       {
         "id": "payment",
@@ -207,37 +180,13 @@
       },
       {
         "from": "gateway",
-        "to": "auth",
-        "status": "ok",
-        "direction": "forward"
-      },
-      {
-        "from": "auth",
-        "to": "feature",
-        "status": "degraded",
-        "direction": "forward"
-      },
-      {
-        "from": "gateway",
         "to": "checkout",
         "status": "ok",
-        "direction": "forward"
-      },
-      {
-        "from": "auth",
-        "to": "checkout",
-        "status": "degraded",
         "direction": "forward"
       },
       {
         "from": "checkout",
         "to": "cart",
-        "status": "ok",
-        "direction": "forward"
-      },
-      {
-        "from": "checkout",
-        "to": "pricing",
         "status": "ok",
         "direction": "forward"
       },
@@ -274,12 +223,6 @@
       {
         "from": "checkout",
         "to": "kafka",
-        "status": "ok",
-        "direction": "forward"
-      },
-      {
-        "from": "checkout",
-        "to": "outbox",
         "status": "ok",
         "direction": "forward"
       },

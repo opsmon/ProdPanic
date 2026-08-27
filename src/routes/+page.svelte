@@ -756,22 +756,17 @@
 
   function architecturePath(link: DiagramLink) {
     const paths: Record<string, string> = {
-      'users->cdn': 'M 170 75 L 205 75',
-      'cdn->gateway': 'M 355 75 L 390 75',
-      'gateway->auth': 'M 540 75 L 575 75',
-      'auth->feature': 'M 725 75 L 760 75',
-      'gateway->checkout': 'M 465 107 L 465 150 L 520 185',
-      'auth->checkout': 'M 650 107 L 620 185',
-      'checkout->cart': 'M 425 260 L 335 260',
-      'checkout->redis-session': 'M 425 325 L 335 410',
-      'checkout->payment': 'M 695 250 L 770 235',
-      'checkout->pricing': 'M 695 320 L 770 345',
-      'checkout->postgres': 'M 695 360 L 770 455',
-      'payment->psp': 'M 920 235 L 990 235',
-      'checkout->redis-analytics': 'M 560 375 L 560 433',
-      'checkout->kafka': 'M 470 375 L 430 525 L 400 593',
-      'checkout->outbox': 'M 665 375 L 705 525 L 675 593',
-      'kafka->outbox': 'M 475 625 L 600 625'
+      'users->cdn': 'M 170 90 L 210 90',
+      'cdn->gateway': 'M 360 90 L 400 90',
+      'gateway->checkout': 'M 475 122 L 475 170 L 515 205',
+      'checkout->cart': 'M 425 265 L 335 265',
+      'checkout->redis-session': 'M 425 330 L 335 410',
+      'checkout->payment': 'M 695 250 L 770 250',
+      'payment->psp': 'M 920 250 L 980 250',
+      'checkout->redis-analytics': 'M 560 375 L 560 465',
+      'checkout->postgres': 'M 695 350 L 770 410',
+      'checkout->kafka': 'M 470 375 L 430 540 L 400 608',
+      'kafka->outbox': 'M 475 640 L 600 640'
     };
     return paths[`${link.from}->${link.to}`];
   }
@@ -858,21 +853,18 @@
 
   function architectureNodeStyle(node: DiagramNode) {
     const centers: Record<string, { x: number; y: number }> = {
-      users: { x: 95, y: 75 },
-      cdn: { x: 280, y: 75 },
-      gateway: { x: 465, y: 75 },
-      auth: { x: 650, y: 75 },
-      feature: { x: 835, y: 75 },
+      users: { x: 95, y: 90 },
+      cdn: { x: 285, y: 90 },
+      gateway: { x: 475, y: 90 },
       checkout: { x: 560, y: 280 },
-      cart: { x: 260, y: 260 },
+      cart: { x: 260, y: 265 },
       'redis-session': { x: 260, y: 410 },
-      'redis-analytics': { x: 560, y: 465 },
-      kafka: { x: 400, y: 625 },
-      outbox: { x: 675, y: 625 },
-      payment: { x: 845, y: 235 },
-      pricing: { x: 845, y: 345 },
-      postgres: { x: 845, y: 455 },
-      psp: { x: 1065, y: 235 }
+      'redis-analytics': { x: 560, y: 500 },
+      kafka: { x: 400, y: 640 },
+      outbox: { x: 675, y: 640 },
+      payment: { x: 845, y: 250 },
+      postgres: { x: 845, y: 410 },
+      psp: { x: 1055, y: 250 }
     };
     const center = centers[node.id] ?? { x: node.x * 11.8, y: node.y * 7.2 };
     return `left: ${center.x}px; top: ${center.y}px;`;
@@ -1544,7 +1536,7 @@
 
                 <div
                   class="absolute z-20 grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-dashed border-slate-400/60 bg-[#111827]/55 p-4"
-                  style="left: 1060px; top: 510px; width: 220px;"
+                  style="left: 1045px; top: 520px; width: 220px;"
                 >
                   {#if groupedNode(scenario, 'observability')}
                     {@const observability = groupedNode(scenario, 'observability')}
