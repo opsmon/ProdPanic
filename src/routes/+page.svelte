@@ -886,7 +886,7 @@
   }
 
   function architectureSecondaryLabel(node: DiagramNode) {
-    if (node.id === 'redis-session') return 'sessions';
+    if (node.id === 'redis-session') return 'primary';
     if (node.id === 'redis-analytics') return 'analytics';
     if (node.id === 'postgres') return 'orders';
     if (node.id === 'kafka') return 'checkout-events';

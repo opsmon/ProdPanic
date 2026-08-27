@@ -5,20 +5,21 @@
   "duration": 1500,
   "incidentNumber": "ARCH DRILL #001",
   "incidentTitle": "Checkout теряет заказы после релиза",
-  "incidentText": "Интервьюер показывает схему продовой платформы. После релиза checkout-v4 часть пользователей получает 500 на оплате, часть заказов создаётся без payment intent. Нужно по схеме и evidence найти слабое место, безопасно восстановить поток и объяснить, как не повторить.",
+  "incidentText": "15:06, через несколько минут после включения checkout-v4 на 50% трафика, резко выросли 500 на /checkout/confirm. Пользователь успевает нажать оплату, но часть запросов падает по timeout, часть заказов остаётся в PostgreSQL в статусе payment_pending без payment_intent_id, а outbox не публикует checkout-completed. PSP и PostgreSQL живы: проблема проявляется между Checkout API и idempotency-store. Нужно по схеме и evidence доказать, что checkout-v4 пишет idempotency keys не в writable Redis primary, а в redis-analytics, который read-only и закрыт NetworkPolicy для checkout namespace.",
   "architecture": [
     "CDN/WAF",
     "API Gateway",
     "Checkout API",
     "Cart API",
     "Payment Orchestrator",
-    "Redis sessions",
+    "Redis primary",
+    "Redis analytics",
     "PostgreSQL orders",
     "Kafka checkout-events",
     "Outbox worker",
     "External PSP"
   ],
-  "rootCause": "checkout-v4 читает idempotency ключи из нового Redis endpoint redis-analytics:6379, который предназначен для read-only аналитики и не доступен из checkout namespace; из-за таймаутов повторные payment requests проходят без корректной дедупликации.",
+  "rootCause": "checkout-v4 после релиза получил неверный IDEMPOTENCY_REDIS_URL: вместо writable redis-primary.prod.svc.cluster.local:6379 он обращается к redis-analytics.prod.svc.cluster.local:6379. Этот Redis является read-only репликой для BI/аналитики и закрыт NetworkPolicy для checkout namespace, поэтому SETNX по idempotency key таймаутится. PostgreSQL orders и outbox_events работают корректно, но получают неполные записи как downstream-эффект: orders.payment_intent_id остаётся NULL, а outbox_events не публикует checkout-completed до успешного payment intent.",
   "rootCauseKeywords": [
     "redis-analytics",
     "idempotency",
@@ -29,7 +30,12 @@
     "timeout",
     "redis",
     "networkpolicy",
-    "endpoint"
+    "endpoint",
+    "redis-primary",
+    "setnx",
+    "payment_intent_id",
+    "outbox_events",
+    "payment_pending"
   ],
   "businessContext": {
     "headline": "Каждая минута деградации бьёт по оплатам, саппорту и ручной сверке заказов.",
@@ -94,12 +100,12 @@
       },
       {
         "id": "redis-session",
-        "label": "Redis sessions",
+        "label": "Redis primary",
         "x": 19,
         "y": 49,
         "tone": "data",
         "sectionId": "redis",
-        "detail": "Primary session Redis is healthy and writable."
+        "detail": "Writable Redis primary for session and checkout idempotency keys."
       },
       {
         "id": "redis-analytics",
@@ -117,7 +123,7 @@
         "y": 51,
         "tone": "data",
         "sectionId": "postgres",
-        "detail": "Orders table receives partial checkout records."
+        "detail": "orders and outbox_events are healthy; partial rows are a downstream symptom."
       },
       {
         "id": "kafka",
@@ -314,20 +320,22 @@
     {
       "id": "redis",
       "title": "Redis",
-      "description": "Session and analytics Redis endpoints.",
+      "description": "Writable Redis primary and analytics replica endpoints.",
       "commands": [
         "show redis topology",
-        "probe redis-session",
+        "probe redis-primary",
         "probe redis-analytics"
       ]
     },
     {
       "id": "postgres",
       "title": "PostgreSQL",
-      "description": "Order writes, partial records and outbox rows.",
+      "description": "orders, payment_attempts and outbox_events consistency.",
       "commands": [
+        "show orders schema",
         "show partial orders",
-        "show order locks"
+        "show order locks",
+        "show outbox rows"
       ]
     },
     {
@@ -393,21 +401,21 @@
     {
       "command": "show checkout logs",
       "section": "checkout",
-      "output": "ERROR idempotency store timeout key=pay_7fb redis=redis-analytics.prod:6379\nWARN payment retry without idempotency record order=ord_98221\nERROR checkout confirm failed after 2.5s dependency=idempotency-store",
+      "output": "ERROR idempotency SETNX timeout key=idem_pay_7fb redis=redis-analytics.prod.svc.cluster.local:6379 timeout=2500ms\nWARN created order=ord_98221 status=payment_pending payment_intent_id=NULL because idempotency record was not written\nERROR checkout confirm failed after 2.5s dependency=idempotency-store",
       "discovery": "checkout logs show idempotency redis timeout",
       "scoreDelta": 60
     },
     {
       "command": "show checkout config",
       "section": "checkout",
-      "output": "VERSION=checkout-v4.8.1\nIDEMPOTENCY_BACKEND=redis\nIDEMPOTENCY_REDIS_URL=redis-analytics.prod.svc.cluster.local:6379\nSESSION_REDIS_URL=redis-session.prod.svc.cluster.local:6379",
+      "output": "VERSION=checkout-v4.8.1\nIDEMPOTENCY_BACKEND=redis\nIDEMPOTENCY_REDIS_URL=redis-analytics.prod.svc.cluster.local:6379\nEXPECTED_IDEMPOTENCY_REDIS_URL=redis-primary.prod.svc.cluster.local:6379\nSESSION_REDIS_URL=redis-primary.prod.svc.cluster.local:6379\nORDER_DB_DSN=postgres-orders.prod.svc.cluster.local:5432/orders",
       "discovery": "found wrong idempotency redis endpoint",
       "scoreDelta": 70
     },
     {
       "command": "probe idempotency store",
       "section": "checkout",
-      "output": "nc -vz redis-analytics.prod.svc.cluster.local 6379\nOperation timed out\n\nnc -vz redis-session.prod.svc.cluster.local 6379\nopen",
+      "output": "nc -vz redis-analytics.prod.svc.cluster.local 6379\nOperation timed out from checkout namespace\n\nnc -vz redis-primary.prod.svc.cluster.local 6379\nopen\n\nSETNX idem_pay_probe checkout:v4 -> OK on redis-primary",
       "discovery": "proved checkout cannot reach redis analytics",
       "scoreDelta": 65
     },
@@ -471,35 +479,52 @@
     {
       "command": "show redis topology",
       "section": "redis",
-      "output": "redis-session: writable primary, prod namespace allowed\nredis-analytics: read replica for BI jobs, NetworkPolicy allows analytics namespace only",
+      "output": "redis-primary: writable master, prod checkout namespace allowed, used for sessions and idempotency\nredis-analytics: read-only replica for BI jobs, NetworkPolicy allows analytics namespace only\nExpected contract: checkout writes idempotency keys only to redis-primary with TTL=24h",
       "discovery": "redis analytics is not a checkout dependency",
       "scoreDelta": 45
     },
     {
-      "command": "probe redis-session",
+      "command": "probe redis-primary",
+      "aliases": [
+        "probe redis-session"
+      ],
       "section": "redis",
-      "output": "redis-session PING -> PONG\nrole: master\nwrites: accepted",
+      "output": "redis-primary PING -> PONG\nROLE -> master\nSETNX idem_pay_probe checkout:v4 -> 1\nTTL idem_pay_probe -> 86400",
       "scoreDelta": 20
     },
     {
       "command": "probe redis-analytics",
       "section": "redis",
-      "output": "from redis pod: PING -> PONG\nfrom checkout namespace: timeout by NetworkPolicy\nrole: replica, protected-mode yes",
+      "output": "from analytics namespace: PING -> PONG\nfrom checkout namespace: timeout by NetworkPolicy\nROLE -> replica\nCONFIG get replica-read-only -> yes",
       "discovery": "redis analytics blocked from checkout namespace",
       "scoreDelta": 55
     },
     {
+      "command": "show orders schema",
+      "section": "postgres",
+      "output": "orders(id uuid primary key, user_id uuid not null, status text not null, payment_intent_id text null, idempotency_key text not null, created_at timestamptz not null)\npayment_attempts(id uuid primary key, order_id uuid references orders(id), psp_intent_id text, status text, created_at timestamptz)\noutbox_events(id uuid primary key, aggregate_id uuid not null, event_type text not null, payload jsonb not null, status text not null, created_at timestamptz not null)\nindex orders_idempotency_key_active_idx unique(idempotency_key) where status <> 'cancelled'",
+      "discovery": "validated orders schema and idempotency key constraints",
+      "scoreDelta": 35
+    },
+    {
       "command": "show partial orders",
       "section": "postgres",
-      "output": "orders created_without_payment_intent: 742 since 15:06\nstatus distribution: pending_payment_cleanup\nNo DB saturation or lock pileup.",
+      "output": "select count(*) from orders where created_at >= '15:06' and status='payment_pending' and payment_intent_id is null;\n742\n\nsample:\nord_98221 user=usr_41 status=payment_pending payment_intent_id=NULL idempotency_key=idem_pay_7fb created_at=15:08:11\nord_98227 user=usr_88 status=payment_pending payment_intent_id=NULL idempotency_key=idem_pay_812 created_at=15:08:16\n\nNo duplicate committed orders for the same active idempotency_key; DB constraint is intact.",
       "discovery": "partial orders are downstream impact",
       "scoreDelta": 35
     },
     {
       "command": "show order locks",
       "section": "postgres",
-      "output": "active locks: normal\nlong transactions: none\nconnection pool: 62/300",
+      "output": "active locks: normal\nlong transactions > 5s: none\nconnection pool: 62/300\norders write p95: 41ms\nPostgreSQL is accepting writes; it is not the saturated dependency.",
       "scoreDelta": 20
+    },
+    {
+      "command": "show outbox rows",
+      "section": "postgres",
+      "output": "select event_type,status,count(*) from outbox_events where created_at >= '15:06' group by 1,2;\ncheckout-started       published             18842\ncheckout-completed     blocked_by_payment     4117\npayment-intent-created published             14725\n\nBlocked rows reference payment_pending orders without payment_intent_id.",
+      "discovery": "outbox is waiting on missing payment intent",
+      "scoreDelta": 35
     },
     {
       "command": "show kafka lag",
@@ -510,20 +535,20 @@
     {
       "command": "show outbox queue",
       "section": "outbox",
-      "output": "pending checkout outbox rows: +4,117\noldest pending row: 15:08\nRows reference orders waiting for payment intent reconciliation.",
+      "output": "pending checkout-completed outbox rows: 4,117\noldest pending row: 15:08\nblocked_reason=missing_payment_intent\nRows reference orders.status=payment_pending and payment_intent_id=NULL.",
       "scoreDelta": 25
     },
     {
       "command": "show traces",
       "section": "observability",
-      "output": "Trace checkout-confirm p95=2400ms\nSpan idempotency-store SETNX -> timeout 2500ms\nSpan cart, pricing, postgres under 120ms",
+      "output": "Trace checkout-confirm p95=2400ms\nSpan idempotency-store SETNX redis-analytics -> timeout 2500ms\nSpan orders.insert postgres-orders -> 41ms\nSpan payment-orchestrator.create-intent -> skipped after idempotency timeout",
       "discovery": "traces isolate idempotency store timeout",
       "scoreDelta": 55
     },
     {
       "command": "show service map",
       "section": "observability",
-      "output": "Only checkout-api -> redis-analytics edge is red.\ncheckout-api -> cart/pricing/postgres edges green.\npayment-orchestrator -> PSP green.",
+      "output": "Only checkout-api -> redis-analytics edge is red.\ncheckout-api -> cart/postgres edges green.\npayment-orchestrator -> PSP green.\noutbox lag is yellow because checkout-completed is waiting for payment_intent_id.",
       "scoreDelta": 35
     }
   ],
@@ -532,7 +557,7 @@
       "id": "disable-checkout-v4",
       "label": "Disable checkout-v4 flag",
       "tone": "primary",
-      "output": "Feature flag checkout-v4 disabled. Traffic returned to old idempotency store.\nError rate: 43% -> 4% -> 0.6%.\nManual reconciliation queue created for partial orders.",
+      "output": "Feature flag checkout-v4 disabled. Traffic returned to the previous checkout path and writable redis-primary idempotency store.\nError rate: 43% -> 4% -> 0.6%.\nManual reconciliation queue created for payment_pending orders without payment_intent_id.",
       "scoreDelta": 130,
       "restoreService": true,
       "rootCauseDiscovery": "safe mitigation through feature flag"
@@ -541,7 +566,7 @@
       "id": "fix-idempotency-endpoint",
       "label": "Patch idempotency endpoint",
       "tone": "primary",
-      "output": "Config patched to redis-session prod primary and rolled through canary.\nSETNX succeeds, duplicate payment attempts stop, checkout recovered.",
+      "output": "Config patched to redis-primary.prod.svc.cluster.local:6379 and rolled through canary.\nSETNX succeeds with 24h TTL, payment intent creation resumes, checkout recovered.\nPostgreSQL cleanup job marks unrecoverable payment_pending rows as cancelled after support reconciliation.",
       "scoreDelta": 150,
       "restoreService": true,
       "rootCauseDiscovery": "fixed wrong idempotency store endpoint"
