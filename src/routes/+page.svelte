@@ -110,6 +110,7 @@
     y1: number;
     x2: number;
     y2: number;
+    d?: string;
     label?: string;
     status?: DiagramLink['status'];
     direction?: DiagramLink['direction'];
@@ -705,6 +706,8 @@
 
   function diagramLines(current: Scenario): DiagramLine[] {
     const diagram = diagramForScenario(current);
+    if (current.difficulty === 'architecture') return architectureDiagramLines(diagram.links);
+
     return diagram.links.flatMap((link) => {
       const from = nodeById(diagram.nodes, link.from);
       const to = nodeById(diagram.nodes, link.to);
@@ -715,28 +718,14 @@
       const length = Math.hypot(dx, dy) || 1;
       const ux = dx / length;
       const uy = dy / length;
-      const isArchitecture = current.difficulty === 'architecture';
-      const fromTrim = isArchitecture
-        ? architectureNodeTrim(from, ux, uy)
-        : Math.abs(dy) < 1
-          ? 3.5
-          : Math.abs(dx) < 1
-            ? 3.2
-            : 4.4;
-      const toTrim = isArchitecture
-        ? architectureNodeTrim(to, ux, uy)
-        : Math.abs(dy) < 1
-          ? 3.5
-          : Math.abs(dx) < 1
-            ? 3.2
-            : 4.4;
+      const trim = Math.abs(dy) < 1 ? 3.5 : Math.abs(dx) < 1 ? 3.2 : 4.4;
 
       return [
         {
-          x1: from.x + ux * fromTrim,
-          y1: from.y + uy * fromTrim,
-          x2: to.x - ux * toTrim,
-          y2: to.y - uy * toTrim,
+          x1: from.x + ux * trim,
+          y1: from.y + uy * trim,
+          x2: to.x - ux * trim,
+          y2: to.y - uy * trim,
           label: link.label,
           status: link.status,
           direction: link.direction ?? 'forward'
@@ -745,16 +734,46 @@
     });
   }
 
-  function architectureNodeTrim(node: DiagramNode, ux: number, uy: number) {
-    const { rx, ry } =
-      node.id === 'checkout'
-        ? { rx: 11.2, ry: 13.6 }
-        : node.id === 'observability' || node.id === 'logging'
-          ? { rx: 7.4, ry: 4.8 }
-          : { rx: 6.5, ry: 4.9 };
-    const tx = Math.abs(ux) > 0.001 ? rx / Math.abs(ux) : Number.POSITIVE_INFINITY;
-    const ty = Math.abs(uy) > 0.001 ? ry / Math.abs(uy) : Number.POSITIVE_INFINITY;
-    return Math.min(tx, ty) + 0.35;
+  function architectureDiagramLines(links: DiagramLink[]): DiagramLine[] {
+    return links.flatMap((link) => {
+      const d = architecturePath(link);
+      if (!d) return [];
+
+      return [
+        {
+          x1: 0,
+          y1: 0,
+          x2: 0,
+          y2: 0,
+          d,
+          label: link.label,
+          status: link.status,
+          direction: link.direction ?? 'forward'
+        }
+      ];
+    });
+  }
+
+  function architecturePath(link: DiagramLink) {
+    const paths: Record<string, string> = {
+      'users->cdn': 'M 13.6 8 L 15.4 8',
+      'cdn->gateway': 'M 28.6 8 L 31.4 8',
+      'gateway->auth': 'M 44.6 8 L 47.4 8',
+      'auth->feature': 'M 60.6 8 L 63.4 8',
+      'gateway->checkout': 'M 38 13 L 38 19.8',
+      'auth->checkout': 'M 54 13 L 51 19.8',
+      'checkout->cart': 'M 35.2 31 L 25.6 31',
+      'checkout->redis-session': 'M 35.6 39.8 L 25.6 49',
+      'checkout->payment': 'M 58.4 30.3 L 61.4 28.2',
+      'checkout->pricing': 'M 58.4 38.4 L 61.4 40',
+      'checkout->postgres': 'M 58.4 43.8 L 61.4 50',
+      'payment->psp': 'M 74.6 27 L 79.2 27',
+      'checkout->redis-analytics': 'M 47 47.6 L 47 56.8',
+      'checkout->kafka': 'M 40.4 47.4 L 31.2 80.8',
+      'checkout->outbox': 'M 50.5 47.4 L 55 80.8',
+      'kafka->outbox': 'M 37.6 86 L 48.4 86'
+    };
+    return paths[`${link.from}->${link.to}`];
   }
 
   function lineClass(status: DiagramLink['status'] = 'ok') {
@@ -818,7 +837,7 @@
 
   function architectureNodeClasses(node: DiagramNode) {
     if (node.id === 'checkout') {
-      return 'min-h-[190px] w-[270px] flex-col gap-4 rounded-lg border-2 border-danger bg-[#641a22]/90 text-danger shadow-[0_0_42px_rgba(255,107,107,0.18)]';
+      return 'min-h-[190px] w-[270px] flex-col gap-4 rounded-lg border-2 border-danger bg-[#641a22] text-danger shadow-[0_0_42px_rgba(255,107,107,0.18)]';
     }
 
     const tone =
@@ -1456,18 +1475,32 @@
                     </marker>
                   </defs>
                   {#each diagramLines(scenario) as line}
-                    <line
-                      x1={line.x1}
-                      y1={line.y1}
-                      x2={line.x2}
-                      y2={line.y2}
-                      class={lineClass(line.status)}
-                      opacity={line.status === 'blocked' ? '0.95' : '0.82'}
-                      stroke-width={line.status === 'blocked' ? '0.58' : '0.34'}
-                      stroke-linecap="round"
-                      marker-start={markerStart(line)}
-                      marker-end={markerEnd(line)}
-                    />
+                    {#if line.d}
+                      <path
+                        d={line.d}
+                        class={lineClass(line.status)}
+                        fill="none"
+                        opacity={line.status === 'blocked' ? '0.95' : '0.82'}
+                        stroke-width={line.status === 'blocked' ? '0.58' : '0.34'}
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        marker-start={markerStart(line)}
+                        marker-end={markerEnd(line)}
+                      />
+                    {:else}
+                      <line
+                        x1={line.x1}
+                        y1={line.y1}
+                        x2={line.x2}
+                        y2={line.y2}
+                        class={lineClass(line.status)}
+                        opacity={line.status === 'blocked' ? '0.95' : '0.82'}
+                        stroke-width={line.status === 'blocked' ? '0.58' : '0.34'}
+                        stroke-linecap="round"
+                        marker-start={markerStart(line)}
+                        marker-end={markerEnd(line)}
+                      />
+                    {/if}
                   {/each}
                 </svg>
 

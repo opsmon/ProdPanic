@@ -233,19 +233,19 @@
         "from": "checkout",
         "to": "cart",
         "status": "ok",
-        "direction": "both"
+        "direction": "forward"
       },
       {
         "from": "checkout",
         "to": "pricing",
         "status": "ok",
-        "direction": "both"
+        "direction": "forward"
       },
       {
         "from": "checkout",
         "to": "payment",
         "status": "ok",
-        "direction": "both"
+        "direction": "forward"
       },
       {
         "from": "payment",
@@ -257,7 +257,7 @@
         "from": "checkout",
         "to": "redis-session",
         "status": "ok",
-        "direction": "both"
+        "direction": "forward"
       },
       {
         "from": "checkout",
@@ -269,13 +269,13 @@
         "from": "checkout",
         "to": "postgres",
         "status": "ok",
-        "direction": "both"
+        "direction": "forward"
       },
       {
         "from": "checkout",
         "to": "kafka",
         "status": "ok",
-        "direction": "both"
+        "direction": "forward"
       },
       {
         "from": "checkout",
@@ -284,8 +284,8 @@
         "direction": "forward"
       },
       {
-        "from": "outbox",
-        "to": "kafka",
+        "from": "kafka",
+        "to": "outbox",
         "status": "degraded",
         "direction": "forward"
       }
