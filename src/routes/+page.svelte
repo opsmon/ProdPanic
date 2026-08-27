@@ -148,16 +148,22 @@
       impactedUserSeconds += affectedUsers * Math.max(0, Math.min(1, errorRate / 100));
       estimatedLossRub += estimateImpactTick(scenario, errorRate, affectedUsers);
 
-      const event = scenario.managerEvents.find((item) => elapsed >= item.at && !seenManagerEvents.has(item.at));
+      const event =
+        scenario.difficulty === 'architecture'
+          ? undefined
+          : scenario.managerEvents.find((item) => elapsed >= item.at && !seenManagerEvents.has(item.at));
       if (event) {
         currentManager = event;
         seenManagerEvents = new Set(seenManagerEvents).add(event.at);
         pushTimeline(`Manager requested ETA`);
       }
 
-      const interviewerQuestion = scenario.interviewerQuestions?.find(
-        (item) => elapsed >= item.at && !seenInterviewerQuestions.has(item.at)
-      );
+      const interviewerQuestion =
+        scenario.difficulty === 'architecture'
+          ? undefined
+          : scenario.interviewerQuestions?.find(
+              (item) => elapsed >= item.at && !seenInterviewerQuestions.has(item.at)
+            );
       if (interviewerQuestion) {
         currentInterviewerQuestion = interviewerQuestion;
         seenInterviewerQuestions = new Set(seenInterviewerQuestions).add(interviewerQuestion.at);
@@ -680,9 +686,25 @@
     return diagram.links.flatMap((link) => {
       const from = nodeById(diagram.nodes, link.from);
       const to = nodeById(diagram.nodes, link.to);
-      return from && to
-        ? [{ x1: from.x, y1: from.y, x2: to.x, y2: to.y, label: link.label, status: link.status }]
-        : [];
+      if (!from || !to) return [];
+
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const length = Math.hypot(dx, dy) || 1;
+      const ux = dx / length;
+      const uy = dy / length;
+      const trim = Math.abs(dy) < 1 ? 3.5 : Math.abs(dx) < 1 ? 3.2 : 4.4;
+
+      return [
+        {
+          x1: from.x + ux * trim,
+          y1: from.y + uy * trim,
+          x2: to.x - ux * trim,
+          y2: to.y - uy * trim,
+          label: link.label,
+          status: link.status
+        }
+      ];
     });
   }
 
@@ -690,11 +712,29 @@
     if (status === 'blocked') return 'stroke-danger';
     if (status === 'degraded') return 'stroke-signal';
     if (status === 'unknown') return 'stroke-slate-500';
-    return 'stroke-slate-400';
+    return 'stroke-slate-200';
   }
 
   function nodeClasses(node: DiagramNode, compact = false) {
-    const base = compact ? 'min-h-10 w-[116px] text-[11px]' : 'min-h-12 w-[142px] text-[11px] sm:w-[156px] sm:text-xs';
+    const base = compact ? 'min-h-10 w-[116px] text-[11px]' : 'min-h-12 w-[118px] text-[11px] sm:w-[132px] sm:text-xs';
+    if (!compact) {
+      const tone =
+        node.tone === 'data'
+          ? 'border-ok/60 bg-[#0f241a] text-ok'
+          : node.tone === 'control'
+            ? 'border-signal/70 bg-[#2a2110] text-signal'
+            : node.tone === 'app'
+              ? 'border-slate-400/70 bg-[#1e2329] text-slate-100'
+              : node.tone === 'queue'
+                ? 'border-cyan-300/70 bg-[#10272e] text-cyan-100'
+                : node.tone === 'external'
+                  ? 'border-fuchsia-300/60 bg-[#27172e] text-fuchsia-100'
+                  : node.tone === 'risk'
+                    ? 'border-danger/80 bg-[#2a1014] text-danger'
+                    : 'border-line bg-[#12191f] text-slate-200';
+      return `${base} ${tone}`;
+    }
+
     const tone =
       node.tone === 'data'
         ? 'border-ok/50 bg-ok/10 text-ok'
@@ -934,35 +974,35 @@
         </p>
       </div>
 
-      {#if scenario}
-        <div class="grid grid-cols-2 gap-2 font-mono text-xs sm:grid-cols-3 xl:grid-cols-6">
-          <div class="border border-line bg-panel px-3 py-2">
-            <span class="block text-slate-500">ERROR RATE</span>
-            <strong class="text-xl text-danger">{errorRate}%</strong>
+      {#if scenario && scenario.difficulty !== 'architecture'}
+          <div class="grid grid-cols-2 gap-2 font-mono text-xs sm:grid-cols-3 xl:grid-cols-6">
+            <div class="border border-line bg-panel px-3 py-2">
+              <span class="block text-slate-500">ERROR RATE</span>
+              <strong class="text-xl text-danger">{errorRate}%</strong>
+            </div>
+            <div class="border border-line bg-panel px-3 py-2">
+              <span class="block text-slate-500">USERS</span>
+              <strong class="text-xl">{affectedUsers.toLocaleString('ru-RU')}</strong>
+            </div>
+            <div class="border border-line bg-panel px-3 py-2">
+              <span class="block text-slate-500">STATUS</span>
+              <strong class:text-ok={serviceStatus === 'RECOVERED'} class:text-danger={serviceStatus !== 'RECOVERED'}>
+                {serviceStatus}
+              </strong>
+            </div>
+            <div class="border border-line bg-panel px-3 py-2">
+              <span class="block text-slate-500">TIME</span>
+              <strong class="text-xl">{formatTimer(remaining)}</strong>
+            </div>
+            <div class="border border-line bg-panel px-3 py-2">
+              <span class="block text-slate-500">SCORE</span>
+              <strong class="text-xl text-signal">{score}</strong>
+            </div>
+            <div class="border border-line bg-panel px-3 py-2">
+              <span class="block text-slate-500">LOSS</span>
+              <strong class="text-xl text-danger">{formatRub(estimatedLossRub)}</strong>
+            </div>
           </div>
-          <div class="border border-line bg-panel px-3 py-2">
-            <span class="block text-slate-500">USERS</span>
-            <strong class="text-xl">{affectedUsers.toLocaleString('ru-RU')}</strong>
-          </div>
-          <div class="border border-line bg-panel px-3 py-2">
-            <span class="block text-slate-500">STATUS</span>
-            <strong class:text-ok={serviceStatus === 'RECOVERED'} class:text-danger={serviceStatus !== 'RECOVERED'}>
-              {serviceStatus}
-            </strong>
-          </div>
-          <div class="border border-line bg-panel px-3 py-2">
-            <span class="block text-slate-500">TIME</span>
-            <strong class="text-xl">{formatTimer(remaining)}</strong>
-          </div>
-          <div class="border border-line bg-panel px-3 py-2">
-            <span class="block text-slate-500">SCORE</span>
-            <strong class="text-xl text-signal">{score}</strong>
-          </div>
-          <div class="border border-line bg-panel px-3 py-2">
-            <span class="block text-slate-500">LOSS</span>
-            <strong class="text-xl text-danger">{formatRub(estimatedLossRub)}</strong>
-          </div>
-        </div>
       {/if}
     </header>
 
@@ -1231,45 +1271,18 @@
       </section>
     {:else}
       {#if scenario.difficulty === 'architecture'}
-        <section class="grid gap-4 2xl:grid-cols-[1fr_390px]">
+        <section class="grid gap-4">
           <div class="grid gap-4">
-            <div class="border border-line bg-panel p-4">
-              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <p class="font-mono text-xs uppercase text-slate-500">{scenario.incidentNumber}</p>
-                  <h2 class="mt-1 text-2xl font-semibold">{scenario.incidentTitle}</h2>
-                  <p class="mt-3 max-w-4xl text-sm leading-6 text-slate-300">{scenario.incidentText}</p>
-                </div>
-                <button
-                  class="flex h-11 w-11 shrink-0 items-center justify-center border border-signal bg-signal text-black transition hover:bg-[#ffd974]"
-                  title="Restart game"
-                  on:click={restartScenario}
-                >
-                  <RotateCcw size={18} aria-hidden="true" />
-                </button>
-              </div>
-              {#if scenario.businessContext}
-                <div class="mt-4 grid gap-3 lg:grid-cols-[1fr_360px]">
-                  <p class="border-l-4 border-signal bg-signal/10 px-4 py-3 text-sm leading-6 text-slate-200">
-                    {scenario.businessContext.headline}
-                  </p>
-                  <p class="border border-line bg-black/20 px-4 py-3 text-sm leading-6 text-slate-300">
-                    {scenario.businessContext.objective}
-                  </p>
-                </div>
-              {/if}
-            </div>
-
             <section class="border border-line bg-panel">
               <div class="flex flex-col gap-1 border-b border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <h3 class="flex items-center gap-2 font-semibold">
                   <Workflow size={18} />
                   Incident Map
                 </h3>
-                <span class="font-mono text-xs text-slate-500">Click a component to inspect evidence</span>
+                <span class="font-mono text-2xl text-signal">{formatTimer(remaining)}</span>
               </div>
-              <div class="relative h-[620px] overflow-hidden bg-[#070a0d] sm:h-[680px]">
-                <svg class="absolute inset-0 h-full w-full" viewBox="0 0 100 100" aria-hidden="true">
+              <div class="relative h-[620px] overflow-hidden bg-[#070a0d] sm:h-[700px]">
+                <svg class="pointer-events-none absolute inset-0 z-10 h-full w-full" viewBox="0 0 100 100" aria-hidden="true">
                   {#each diagramLines(scenario) as line}
                     <line
                       x1={line.x1}
@@ -1277,271 +1290,24 @@
                       x2={line.x2}
                       y2={line.y2}
                       class={lineClass(line.status)}
-                      opacity={line.status === 'blocked' ? '0.95' : '0.62'}
-                      stroke-width={line.status === 'blocked' ? '0.9' : '0.55'}
+                      opacity={line.status === 'blocked' ? '0.95' : '0.82'}
+                      stroke-width={line.status === 'blocked' ? '0.8' : '0.55'}
+                      stroke-linecap="round"
                     />
-                    {#if line.label}
-                      <text
-                        x={(line.x1 + line.x2) / 2}
-                        y={(line.y1 + line.y2) / 2 - 1.2}
-                        text-anchor="middle"
-                        class="fill-slate-400 font-mono text-[2.2px]"
-                      >
-                        {line.label}
-                      </text>
-                    {/if}
                   {/each}
                 </svg>
                 {#each diagramForScenario(scenario).nodes as node}
-                  <button
-                    class={`absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center border px-2 text-center font-mono leading-4 shadow-[0_0_20px_rgba(0,0,0,0.26)] transition hover:border-signal hover:bg-signal/20 ${nodeClasses(node)} ${
-                      selectedDiagramNode?.id === node.id ? 'ring-2 ring-signal ring-offset-2 ring-offset-black' : ''
-                    }`}
+                  <div
+                    class={`absolute z-20 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center border px-2 text-center font-mono leading-4 shadow-[0_0_20px_rgba(0,0,0,0.26)] ${nodeClasses(node)}`}
                     style={`left: ${node.x}%; top: ${node.y}%`}
-                    title={node.detail ?? `Connect to ${node.label}`}
-                    on:click={() => connectNode(node)}
                   >
                     {node.label}
-                  </button>
+                  </div>
                 {/each}
               </div>
             </section>
 
-            <section class="border border-line bg-panel">
-              <div class="flex flex-wrap border-b border-line">
-                {#each scenario.sections as section}
-                  <button
-                    class={`min-h-12 border-r border-line px-4 py-2 text-sm transition ${
-                      activeSection === section.id ? 'bg-signal text-black' : 'bg-transparent text-slate-300 hover:bg-panelSoft'
-                    }`}
-                    on:click={() => changeSection(section.id)}
-                  >
-                    {section.title}
-                  </button>
-                {/each}
-              </div>
-
-              {#if selectedSection}
-                <div class="grid gap-4 p-4 lg:grid-cols-[260px_1fr]">
-                  <div>
-                    <p class="font-mono text-xs uppercase text-slate-500">Selected component</p>
-                    <p class="mt-2 text-lg font-semibold">{selectedSection.title}</p>
-                    <p class="mt-3 text-sm leading-6 text-slate-300">{selectedSection.description}</p>
-                    {#if selectedDiagramNode?.detail}
-                      <div class="mt-4 border border-signal/60 bg-signal/10 p-3 text-sm leading-6 text-slate-200">
-                        {selectedDiagramNode.detail}
-                      </div>
-                    {/if}
-                    <div class="mt-4 border border-line bg-black/20 p-3 font-mono text-xs text-slate-400">
-                      cwd: {shellPath}<br />
-                      type `help` or ask targeted probes
-                    </div>
-                  </div>
-
-                  <div class="min-h-[380px] border border-line bg-[#06080a]">
-                    <div class="flex items-center justify-between border-b border-line px-4 py-3">
-                      <h3 class="flex items-center gap-2 font-mono text-sm">
-                        <Terminal size={16} />
-                        Evidence
-                      </h3>
-                      <span class="font-mono text-xs text-slate-500">{scenario.name}</span>
-                    </div>
-                    <div class="terminal-scroll h-[320px] overflow-auto p-4">
-                      {#each activeTerminalOutput as output}
-                        <pre class="mb-4 whitespace-pre-wrap border-l border-line pl-4 font-mono text-xs leading-6 text-slate-200">{output}</pre>
-                      {/each}
-                    </div>
-                    <form class="flex border-t border-line" on:submit|preventDefault={() => runCommand()}>
-                      <input
-                        class="min-h-12 flex-1 border-0 bg-black px-4 font-mono text-sm text-ink placeholder:text-slate-600 focus:ring-0"
-                        placeholder="$ command"
-                        bind:value={commandInput}
-                        on:keydown={handleTerminalKeydown}
-                      />
-                      <button
-                        class="flex min-h-12 w-14 items-center justify-center bg-signal text-black transition hover:bg-[#ffd974]"
-                        title="Run command"
-                        type="submit"
-                      >
-                        <Send size={18} aria-hidden="true" />
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              {/if}
-            </section>
-
-            <section class="border border-line bg-panel p-4">
-              <h3 class="font-semibold">Завершить расследование</h3>
-              <div class="mt-4 grid gap-3">
-                <label class="grid gap-2 text-sm">
-                  <span class="text-slate-300">В чём была причина инцидента?</span>
-                  <textarea class="min-h-24 border-line bg-black/30 text-ink focus:border-signal focus:ring-signal" bind:value={rootCauseAnswer}></textarea>
-                </label>
-                <label class="grid gap-2 text-sm">
-                  <span class="text-slate-300">Что вы сделали для восстановления?</span>
-                  <textarea class="min-h-20 border-line bg-black/30 text-ink focus:border-signal focus:ring-signal" bind:value={recoveryAnswer}></textarea>
-                </label>
-                <label class="grid gap-2 text-sm">
-                  <span class="text-slate-300">Что бы вы сделали, чтобы проблема не повторилась?</span>
-                  <textarea class="min-h-20 border-line bg-black/30 text-ink focus:border-signal focus:ring-signal" bind:value={preventionAnswer}></textarea>
-                </label>
-                <button
-                  class="flex min-h-12 items-center justify-center gap-2 border border-ok bg-ok font-semibold text-black disabled:cursor-not-allowed disabled:border-line disabled:bg-slate-800 disabled:text-slate-500"
-                  disabled={!canFinish}
-                  on:click={finishInvestigation}
-                >
-                  <CheckCircle2 size={18} aria-hidden="true" />
-                  Завершить расследование
-                </button>
-              </div>
-            </section>
           </div>
-
-          <aside class="grid content-start gap-4">
-            <div class="border border-line bg-panel p-4">
-              <div class="grid grid-cols-2 gap-2 font-mono text-xs">
-                <div class="border border-line bg-black/20 p-3">
-                  <span class="block text-slate-500">TIME LEFT</span>
-                  <strong class="text-2xl">{formatTimer(remaining)}</strong>
-                </div>
-                <div class="border border-line bg-black/20 p-3">
-                  <span class="block text-slate-500">LOSS</span>
-                  <strong class="text-xl text-danger">{formatRub(estimatedLossRub)}</strong>
-                </div>
-                <div class="border border-line bg-black/20 p-3">
-                  <span class="block text-slate-500">USERS</span>
-                  <strong class="text-xl">{affectedUsers.toLocaleString('ru-RU')}</strong>
-                </div>
-                <div class="border border-line bg-black/20 p-3">
-                  <span class="block text-slate-500">ERROR</span>
-                  <strong class="text-xl text-danger">{errorRate}%</strong>
-                </div>
-              </div>
-            </div>
-
-            <div class="border border-line bg-panel p-4">
-              <h3 class="flex items-center gap-2 font-semibold">
-                <MessageSquare size={18} />
-                Engineer
-              </h3>
-              <div class="mt-4 border border-line bg-black/20 p-4">
-                {#if currentInterviewerQuestion}
-                  <p class="font-mono text-sm uppercase text-signal">Вопрос интервьюера</p>
-                  <p class="mt-3 text-base font-semibold leading-6">{currentInterviewerQuestion.question}</p>
-                  <form class="mt-4 grid gap-3" on:submit|preventDefault={answerInterviewer}>
-                    <textarea
-                      class="min-h-24 border-line bg-black/30 text-sm text-ink placeholder:text-slate-600 focus:border-signal focus:ring-signal"
-                      placeholder="Коротко объясни ход мысли..."
-                      bind:value={interviewerAnswerInput}
-                    ></textarea>
-                    <button
-                      class="flex min-h-11 items-center justify-center gap-2 border border-signal bg-signal px-3 py-2 text-sm font-semibold text-black transition hover:bg-[#ffd974]"
-                      type="submit"
-                    >
-                      <Send size={16} aria-hidden="true" />
-                      Ответить
-                    </button>
-                  </form>
-                {:else}
-                  <p class="font-mono text-sm text-slate-500">Answered: {interviewerAnswers.length}/{scenario.interviewerQuestions?.length ?? 0}</p>
-                  {#if interviewerAnswers.length}
-                    <ol class="terminal-scroll mt-4 max-h-52 space-y-3 overflow-auto pr-2 text-sm">
-                      {#each interviewerAnswers as item}
-                        <li class="border-l border-line pl-3">
-                          <span class="font-mono text-xs text-slate-500">{formatTimer(item.at)}</span>
-                          <p class="mt-1 text-slate-200">{item.question}</p>
-                          <p class="mt-1 text-slate-400">{item.followUp}</p>
-                        </li>
-                      {/each}
-                    </ol>
-                  {:else}
-                    <p class="mt-3 text-sm text-slate-400">Интервьюер молчит и смотрит, куда ты кликнешь первым.</p>
-                  {/if}
-                {/if}
-              </div>
-            </div>
-
-            <div class="border border-line bg-panel p-4">
-              <h3 class="flex items-center gap-2 font-semibold">
-                <FileText size={18} />
-                Findings
-              </h3>
-              <form class="mt-4 grid gap-3" on:submit|preventDefault={addCandidateNote}>
-                <textarea
-                  class="min-h-36 border-line bg-black/30 text-sm text-ink placeholder:text-slate-600 focus:border-signal focus:ring-signal"
-                  placeholder="Гипотеза, наблюдение, что проверить дальше..."
-                  bind:value={noteInput}
-                ></textarea>
-                <button
-                  class="flex min-h-11 items-center justify-center gap-2 border border-signal bg-signal px-3 py-2 text-sm font-semibold text-black transition hover:bg-[#ffd974]"
-                  type="submit"
-                >
-                  <Send size={16} aria-hidden="true" />
-                  Записать
-                </button>
-              </form>
-              {#if candidateNotes.length}
-                <ol class="terminal-scroll mt-4 max-h-56 space-y-2 overflow-auto pr-2">
-                  {#each candidateNotes as note}
-                    <li class="grid grid-cols-[48px_1fr] gap-3 border-l border-line pl-3 text-sm">
-                      <span class="font-mono text-xs text-slate-500">{formatTimer(note.at)}</span>
-                      <span class="whitespace-pre-wrap text-slate-200">{note.text}</span>
-                    </li>
-                  {/each}
-                </ol>
-              {/if}
-            </div>
-
-            <div class="border border-line bg-panel p-4">
-              <h3 class="flex items-center gap-2 text-sm font-semibold uppercase text-slate-300">
-                <ShieldCheck size={16} />
-                Actions
-              </h3>
-              <div class="mt-4 grid gap-2">
-                {#each scenario.actions as action}
-                  <button
-                    class={`flex min-h-11 items-center justify-center gap-2 border px-3 py-2 text-sm font-semibold transition ${
-                      action.tone === 'primary'
-                        ? 'border-signal bg-signal text-black hover:bg-[#ffd974]'
-                        : action.tone === 'danger'
-                          ? 'border-danger/70 bg-danger/10 text-danger hover:bg-danger/20'
-                          : 'border-line bg-black/20 text-slate-100 hover:border-slate-400'
-                    }`}
-                    on:click={() => performAction(action)}
-                  >
-                    {#if action.id === 'rollback' || action.id === 'git-rollback' || action.id.includes('flag') || action.id.includes('endpoint')}
-                      <GitBranch size={16} aria-hidden="true" />
-                    {:else}
-                      <AlertTriangle size={16} aria-hidden="true" />
-                    {/if}
-                    {action.label}
-                  </button>
-                {/each}
-              </div>
-            </div>
-
-            <div class="border border-line bg-panel p-4">
-              <div class="flex items-center justify-between gap-3">
-                <h3 class="flex items-center gap-2 font-semibold">
-                  <History size={18} />
-                  Timeline
-                </h3>
-                <span class="flex items-center gap-1 font-mono text-xs text-slate-500">
-                  <Clock3 size={14} />
-                  {formatTimer(elapsed)}
-                </span>
-              </div>
-              <ol class="terminal-scroll mt-4 max-h-72 space-y-3 overflow-auto pr-2 font-mono text-xs">
-                {#each timeline as item}
-                  <li class="grid grid-cols-[48px_1fr] gap-3">
-                    <span class="text-slate-500">{formatTimer(item.at)}</span>
-                    <span>{item.text}</span>
-                  </li>
-                {/each}
-              </ol>
-            </div>
-          </aside>
         </section>
       {:else}
       <section class="grid gap-4 xl:grid-cols-[320px_1fr_360px]">

@@ -41,8 +41,8 @@
       {
         "id": "users",
         "label": "Users",
-        "x": 8,
-        "y": 13,
+        "x": 7,
+        "y": 15,
         "tone": "edge",
         "sectionId": "edge",
         "detail": "Mobile and web checkout traffic."
@@ -50,8 +50,8 @@
       {
         "id": "cdn",
         "label": "CDN/WAF",
-        "x": 22,
-        "y": 13,
+        "x": 24,
+        "y": 15,
         "tone": "edge",
         "sectionId": "edge",
         "detail": "No traffic blocks; 5xx generated behind gateway."
@@ -59,8 +59,8 @@
       {
         "id": "gateway",
         "label": "API Gateway",
-        "x": 38,
-        "y": 13,
+        "x": 41,
+        "y": 15,
         "tone": "edge",
         "sectionId": "gateway",
         "detail": "Routes /checkout and /payment to internal services."
@@ -68,8 +68,8 @@
       {
         "id": "auth",
         "label": "Auth",
-        "x": 54,
-        "y": 7,
+        "x": 58,
+        "y": 15,
         "tone": "control",
         "sectionId": "auth",
         "detail": "Token validation is healthy."
@@ -77,8 +77,8 @@
       {
         "id": "feature",
         "label": "Feature Flags",
-        "x": 70,
-        "y": 7,
+        "x": 75,
+        "y": 15,
         "tone": "control",
         "sectionId": "flags",
         "detail": "checkout-v4 flag was enabled for 50% of traffic."
@@ -86,8 +86,8 @@
       {
         "id": "checkout",
         "label": "Checkout API v4",
-        "x": 54,
-        "y": 28,
+        "x": 55,
+        "y": 35,
         "tone": "risk",
         "sectionId": "checkout",
         "detail": "New idempotency store dependency was added in v4."
@@ -96,7 +96,7 @@
         "id": "cart",
         "label": "Cart API",
         "x": 38,
-        "y": 44,
+        "y": 47,
         "tone": "app",
         "sectionId": "cart",
         "detail": "Cart reads are healthy."
@@ -104,8 +104,8 @@
       {
         "id": "pricing",
         "label": "Pricing API",
-        "x": 54,
-        "y": 48,
+        "x": 64,
+        "y": 54,
         "tone": "app",
         "sectionId": "pricing",
         "detail": "Pricing latency is normal."
@@ -113,8 +113,8 @@
       {
         "id": "payment",
         "label": "Payment Orchestrator",
-        "x": 73,
-        "y": 31,
+        "x": 74,
+        "y": 35,
         "tone": "app",
         "sectionId": "payment",
         "detail": "Retries payment creation when checkout times out."
@@ -122,8 +122,8 @@
       {
         "id": "redis-session",
         "label": "Redis sessions",
-        "x": 26,
-        "y": 70,
+        "x": 33,
+        "y": 65,
         "tone": "data",
         "sectionId": "redis",
         "detail": "Primary session Redis is healthy and writable."
@@ -131,8 +131,8 @@
       {
         "id": "redis-analytics",
         "label": "Redis analytics",
-        "x": 52,
-        "y": 73,
+        "x": 55,
+        "y": 74,
         "tone": "risk",
         "sectionId": "redis",
         "detail": "Read-only analytics endpoint is not reachable from checkout namespace."
@@ -140,8 +140,8 @@
       {
         "id": "postgres",
         "label": "PostgreSQL orders",
-        "x": 75,
-        "y": 70,
+        "x": 76,
+        "y": 65,
         "tone": "data",
         "sectionId": "postgres",
         "detail": "Orders table receives partial checkout records."
@@ -149,7 +149,7 @@
       {
         "id": "kafka",
         "label": "Kafka checkout-events",
-        "x": 36,
+        "x": 35,
         "y": 88,
         "tone": "queue",
         "sectionId": "kafka",
@@ -158,8 +158,8 @@
       {
         "id": "outbox",
         "label": "Outbox worker",
-        "x": 58,
-        "y": 90,
+        "x": 57,
+        "y": 88,
         "tone": "queue",
         "sectionId": "outbox",
         "detail": "Publishes completed orders after DB commit."
@@ -167,8 +167,8 @@
       {
         "id": "psp",
         "label": "External PSP",
-        "x": 91,
-        "y": 31,
+        "x": 92,
+        "y": 35,
         "tone": "external",
         "sectionId": "psp",
         "detail": "Provider is healthy; duplicate attempts are rejected inconsistently."
@@ -176,7 +176,7 @@
       {
         "id": "observability",
         "label": "Observability",
-        "x": 90,
+        "x": 92,
         "y": 62,
         "tone": "control",
         "sectionId": "observability",
