@@ -74,6 +74,12 @@ Settings -> Pages -> Build and deployment -> Source -> GitHub Actions
 Для project pages workflow передаёт `BASE_PATH=/<repo-name>`, чтобы SvelteKit корректно собрал пути ассетов.
 Workflow использует официальный Pages-пайплайн: `actions/configure-pages`, `actions/upload-pages-artifact` и `actions/deploy-pages`.
 
+## MR checklist
+
+- проверить, что новые сценарии импортированы в `src/routes/+page.svelte`;
+- запустить `npm run build` перед merge;
+- убедиться, что README отражает пользовательские сценарии и команды.
+
 ## Структура
 
 ```text
