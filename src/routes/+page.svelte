@@ -706,7 +706,6 @@
 
   function diagramLines(current: Scenario): DiagramLine[] {
     const diagram = diagramForScenario(current);
-    if (current.difficulty === 'architecture') return architectureDiagramLines(diagram.links);
 
     return diagram.links.flatMap((link) => {
       const from = nodeById(diagram.nodes, link.from);
@@ -732,42 +731,6 @@
         }
       ];
     });
-  }
-
-  function architectureDiagramLines(links: DiagramLink[]): DiagramLine[] {
-    return links.flatMap((link) => {
-      const d = architecturePath(link);
-      if (!d) return [];
-
-      return [
-        {
-          x1: 0,
-          y1: 0,
-          x2: 0,
-          y2: 0,
-          d,
-          label: link.label,
-          status: link.status,
-          direction: link.direction ?? 'forward'
-        }
-      ];
-    });
-  }
-
-  function architecturePath(link: DiagramLink) {
-    const paths: Record<string, string> = {
-      'users->cdn': 'M 170 90 L 210 90',
-      'cdn->lb': 'M 360 90 L 420 90',
-      'lb->frontend': 'M 495 122 L 495 158',
-      'frontend->backend': 'M 495 222 L 495 255',
-      'frontend->redis-session': 'M 420 190 L 325 190',
-      'backend->postgres': 'M 495 445 L 495 520',
-      'postgres->outbox': 'M 495 584 L 495 608',
-      'outbox->kafka': 'M 570 640 L 695 640',
-      'backend->payment': 'M 630 350 L 705 350',
-      'payment->psp': 'M 855 350 L 935 350'
-    };
-    return paths[`${link.from}->${link.to}`];
   }
 
   function lineClass(status: DiagramLink['status'] = 'ok') {
@@ -831,7 +794,7 @@
 
   function architectureNodeClasses(node: DiagramNode) {
     if (node.id === 'backend') {
-      return 'h-[190px] w-[270px] flex-col gap-4 rounded-lg border-2 border-sky-300 bg-[#102033] text-sky-100 shadow-[0_0_42px_rgba(56,189,248,0.16)]';
+      return 'h-24 w-32 flex-col gap-2 rounded-lg border-2 border-sky-300 bg-[#102033] text-sky-100 shadow-[0_0_42px_rgba(56,189,248,0.16)] sm:h-36 sm:w-52 sm:gap-3 lg:h-[190px] lg:w-[270px] lg:gap-4';
     }
 
     const tone =
@@ -849,29 +812,17 @@
                 ? 'border-danger/80 bg-[#2a1014] text-danger shadow-[0_0_24px_rgba(255,107,107,0.14)]'
                 : 'border-signal/80 bg-[#2a2110] text-signal shadow-[0_0_24px_rgba(248,201,90,0.12)]';
 
-    return `h-16 w-[150px] gap-3 rounded-md border-2 px-4 text-sm ${tone}`;
+    return `min-h-11 w-[70px] gap-1 rounded-md border-2 px-2 text-[10px] sm:min-h-14 sm:w-[118px] sm:gap-2 sm:px-3 sm:text-xs lg:h-16 lg:w-[150px] lg:gap-3 lg:px-4 lg:text-sm ${tone}`;
   }
 
   function architectureNodeStyle(node: DiagramNode) {
-    const centers: Record<string, { x: number; y: number }> = {
-      users: { x: 95, y: 90 },
-      cdn: { x: 285, y: 90 },
-      lb: { x: 495, y: 90 },
-      frontend: { x: 495, y: 190 },
-      backend: { x: 495, y: 350 },
-      'redis-session': { x: 250, y: 190 },
-      postgres: { x: 495, y: 552 },
-      outbox: { x: 495, y: 640 },
-      kafka: { x: 770, y: 640 },
-      payment: { x: 780, y: 350 },
-      psp: { x: 1010, y: 350 }
-    };
-    const center = centers[node.id] ?? { x: node.x * 11.8, y: node.y * 7.2 };
-    return `left: ${center.x}px; top: ${center.y}px;`;
+    return `left: ${node.x}%; top: ${node.y}%;`;
   }
 
   function architectureIconClasses(node: DiagramNode) {
-    return node.id === 'backend' ? 'h-14 w-14' : 'h-7 w-7 shrink-0';
+    return node.id === 'backend'
+      ? 'h-8 w-8 sm:h-11 sm:w-11 lg:h-14 lg:w-14'
+      : 'h-4 w-4 shrink-0 sm:h-6 sm:w-6 lg:h-7 lg:w-7';
   }
 
   function architecturePrimaryLabel(node: DiagramNode) {
@@ -1463,7 +1414,7 @@
       </section>
     {:else}
       {#if scenario.difficulty === 'architecture'}
-        <section class="grid gap-4">
+        <section class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <section class="overflow-hidden border border-line bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
             <div class="flex items-center justify-between gap-4 border-b border-line px-4 py-3 sm:px-5">
               <div>
@@ -1475,24 +1426,24 @@
               <span class="font-mono text-2xl font-semibold text-signal sm:text-3xl">{formatTimer(remaining)}</span>
             </div>
 
-            <div class="overflow-auto bg-[#03080d]">
+            <div class="bg-[#03080d] p-2 sm:p-4">
               <div
-                class="relative mx-auto h-[720px] w-[1180px] overflow-hidden bg-[#061019]"
-                style="background-image: linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px), linear-gradient(rgba(59, 130, 246, 0.045) 1px, transparent 1px); background-size: 48px 48px;"
+                class="relative h-[clamp(520px,62vw,720px)] w-full overflow-hidden bg-[#061019]"
+                style="background-image: linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px), linear-gradient(rgba(59, 130, 246, 0.045) 1px, transparent 1px); background-size: 6.25% 8.333%;"
               >
-                <svg class="pointer-events-none absolute inset-0 z-10 h-full w-full" viewBox="0 0 1180 720" aria-hidden="true">
+                <svg class="pointer-events-none absolute inset-0 z-10 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
                   <defs>
-                    <marker id="arrow-ok" viewBox="0 0 14 14" refX="12" refY="7" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
-                      <path d="M 1 1 L 13 7 L 1 13 z" fill="#e2e8f0" />
+                    <marker id="arrow-ok" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="2.4" markerHeight="2.4" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                      <path d="M 1 1 L 9 5 L 1 9 z" fill="#e2e8f0" />
                     </marker>
-                    <marker id="arrow-degraded" viewBox="0 0 14 14" refX="12" refY="7" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
-                      <path d="M 1 1 L 13 7 L 1 13 z" fill="#f8c95a" />
+                    <marker id="arrow-degraded" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="2.4" markerHeight="2.4" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                      <path d="M 1 1 L 9 5 L 1 9 z" fill="#f8c95a" />
                     </marker>
-                    <marker id="arrow-blocked" viewBox="0 0 14 14" refX="12" refY="7" markerWidth="16" markerHeight="16" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
-                      <path d="M 1 1 L 13 7 L 1 13 z" fill="#ff6b6b" />
+                    <marker id="arrow-blocked" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="2.8" markerHeight="2.8" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                      <path d="M 1 1 L 9 5 L 1 9 z" fill="#ff6b6b" />
                     </marker>
-                    <marker id="arrow-unknown" viewBox="0 0 14 14" refX="12" refY="7" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
-                      <path d="M 1 1 L 13 7 L 1 13 z" fill="#64748b" />
+                    <marker id="arrow-unknown" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="2.4" markerHeight="2.4" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                      <path d="M 1 1 L 9 5 L 1 9 z" fill="#64748b" />
                     </marker>
                   </defs>
                   {#each diagramLines(scenario) as line}
@@ -1516,7 +1467,7 @@
                         y2={line.y2}
                         class={lineClass(line.status)}
                         opacity={line.status === 'blocked' ? '0.95' : '0.82'}
-                        stroke-width={line.status === 'blocked' ? '0.58' : '0.34'}
+                        stroke-width={line.status === 'blocked' ? '0.78' : '0.48'}
                         stroke-linecap="round"
                         marker-start={markerStart(line)}
                         marker-end={markerEnd(line)}
@@ -1532,38 +1483,38 @@
                     style={architectureNodeStyle(node)}
                   >
                     <Icon class={architectureIconClasses(node)} strokeWidth={1.8} aria-hidden="true" />
-                    <span class={node.id === 'backend' ? 'text-2xl text-white' : 'grid text-sm'}>
+                    <span class={node.id === 'backend' ? 'text-sm text-white sm:text-xl lg:text-2xl' : 'grid'}>
                       <span>{architecturePrimaryLabel(node)}</span>
                       {#if node.id !== 'backend' && architectureSecondaryLabel(node)}
-                        <span class="text-xs font-normal opacity-90">{architectureSecondaryLabel(node)}</span>
+                        <span class="text-[9px] font-normal opacity-90 sm:text-xs">{architectureSecondaryLabel(node)}</span>
                       {/if}
                     </span>
                   </div>
                 {/each}
 
                 <div
-                  class="absolute z-20 grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-dashed border-slate-400/60 bg-[#111827]/55 p-4"
-                  style="left: 1045px; top: 520px; width: 220px;"
+                  class="absolute z-20 grid -translate-x-1/2 -translate-y-1/2 gap-2 rounded-lg border border-dashed border-slate-400/60 bg-[#111827]/55 p-2 sm:gap-3 sm:p-3 lg:gap-4 lg:p-4"
+                  style="left: 84%; top: 70%; width: clamp(124px, 17vw, 220px);"
                 >
                   {#if groupedNode(scenario, 'observability')}
                     {@const observability = groupedNode(scenario, 'observability')}
                     {@const ObservabilityIcon = iconForNode('observability')}
-                    <div class="flex min-h-[82px] items-center gap-4 rounded-md border-2 border-orange-400/80 bg-[#2a2110] px-4 text-orange-100 shadow-[0_0_24px_rgba(251,146,60,0.14)]">
-                      <ObservabilityIcon class="h-8 w-8 shrink-0 text-orange-300" strokeWidth={1.8} aria-hidden="true" />
+                    <div class="flex min-h-14 items-center gap-2 rounded-md border-2 border-orange-400/80 bg-[#2a2110] px-2 text-orange-100 shadow-[0_0_24px_rgba(251,146,60,0.14)] sm:min-h-[70px] sm:gap-3 sm:px-3 lg:min-h-[82px] lg:gap-4 lg:px-4">
+                      <ObservabilityIcon class="h-5 w-5 shrink-0 text-orange-300 sm:h-7 sm:w-7 lg:h-8 lg:w-8" strokeWidth={1.8} aria-hidden="true" />
                       <span class="grid font-mono leading-tight">
-                        <span class="font-semibold">{architecturePrimaryLabel(observability)}</span>
-                        <span class="text-[11px] text-orange-100/80">{architectureSecondaryLabel(observability)}</span>
+                        <span class="text-[10px] font-semibold sm:text-xs lg:text-sm">{architecturePrimaryLabel(observability)}</span>
+                        <span class="text-[9px] text-orange-100/80 sm:text-[11px]">{architectureSecondaryLabel(observability)}</span>
                       </span>
                     </div>
                   {/if}
                   {#if groupedNode(scenario, 'logging')}
                     {@const logging = groupedNode(scenario, 'logging')}
                     {@const LoggingIcon = iconForNode('logging')}
-                    <div class="flex min-h-[82px] items-center gap-4 rounded-md border-2 border-orange-400/80 bg-[#2a2110] px-4 text-orange-100 shadow-[0_0_24px_rgba(251,146,60,0.14)]">
-                      <LoggingIcon class="h-8 w-8 shrink-0 text-orange-300" strokeWidth={1.8} aria-hidden="true" />
+                    <div class="flex min-h-14 items-center gap-2 rounded-md border-2 border-orange-400/80 bg-[#2a2110] px-2 text-orange-100 shadow-[0_0_24px_rgba(251,146,60,0.14)] sm:min-h-[70px] sm:gap-3 sm:px-3 lg:min-h-[82px] lg:gap-4 lg:px-4">
+                      <LoggingIcon class="h-5 w-5 shrink-0 text-orange-300 sm:h-7 sm:w-7 lg:h-8 lg:w-8" strokeWidth={1.8} aria-hidden="true" />
                       <span class="grid font-mono leading-tight">
-                        <span class="font-semibold">{architecturePrimaryLabel(logging)}</span>
-                        <span class="text-[11px] text-orange-100/80">{architectureSecondaryLabel(logging)}</span>
+                        <span class="text-[10px] font-semibold sm:text-xs lg:text-sm">{architecturePrimaryLabel(logging)}</span>
+                        <span class="text-[9px] text-orange-100/80 sm:text-[11px]">{architectureSecondaryLabel(logging)}</span>
                       </span>
                     </div>
                   {/if}
@@ -1571,6 +1522,54 @@
               </div>
             </div>
           </section>
+
+          <aside class="grid content-start gap-4">
+            <section class="border border-line bg-panel p-4">
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="flex items-center gap-2 font-semibold">
+                  <FileText size={18} />
+                  Notes
+                </h3>
+                <div class="flex items-center gap-3">
+                  <span class="font-mono text-xs text-slate-500">{candidateNotes.length}</span>
+                  <button
+                    class="flex h-10 w-10 shrink-0 items-center justify-center border border-line bg-black/20 text-slate-100 transition hover:border-signal"
+                    title="Restart game"
+                    on:click={restartScenario}
+                  >
+                    <RotateCcw size={16} aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+              <form class="mt-4 grid gap-3" on:submit|preventDefault={addCandidateNote}>
+                <textarea
+                  class="terminal-scroll min-h-36 border-line bg-black/30 text-sm text-ink placeholder:text-slate-600 focus:border-signal focus:ring-signal"
+                  placeholder="Гипотеза, наблюдение, риск, что проверить дальше..."
+                  bind:value={noteInput}
+                ></textarea>
+                <button
+                  class="flex min-h-11 items-center justify-center gap-2 border border-signal bg-signal px-3 py-2 text-sm font-semibold text-black transition hover:bg-[#ffd974] disabled:cursor-not-allowed disabled:border-line disabled:bg-slate-800 disabled:text-slate-500"
+                  type="submit"
+                  disabled={!noteInput.trim()}
+                >
+                  <Send size={16} aria-hidden="true" />
+                  Записать
+                </button>
+              </form>
+              {#if candidateNotes.length}
+                <ol class="terminal-scroll mt-4 max-h-[360px] space-y-2 overflow-auto pr-2">
+                  {#each candidateNotes as note}
+                    <li class="grid grid-cols-[48px_1fr] gap-3 border-l border-line pl-3 text-sm">
+                      <span class="font-mono text-xs text-slate-500">{formatTimer(note.at)}</span>
+                      <span class="whitespace-pre-wrap text-slate-200">{note.text}</span>
+                    </li>
+                  {/each}
+                </ol>
+              {:else}
+                <p class="mt-4 text-sm text-slate-500">Пока пусто.</p>
+              {/if}
+            </section>
+          </aside>
         </section>
       {:else}
       <section class="grid gap-4 xl:grid-cols-[320px_1fr_360px]">

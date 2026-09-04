@@ -51,8 +51,8 @@
       {
         "id": "users",
         "label": "Users",
-        "x": 8,
-        "y": 8,
+        "x": 10,
+        "y": 10,
         "tone": "edge",
         "sectionId": "users",
         "detail": "Real users and bot traffic enter through the same public path."
@@ -60,8 +60,8 @@
       {
         "id": "cdn",
         "label": "CDN/WAF",
-        "x": 24,
-        "y": 8,
+        "x": 29,
+        "y": 10,
         "tone": "control",
         "sectionId": "cdn",
         "detail": "Rate limiting and bot protection live here."
@@ -69,8 +69,8 @@
       {
         "id": "lb",
         "label": "Load Balancer / Ingress",
-        "x": 42,
-        "y": 8,
+        "x": 48,
+        "y": 10,
         "tone": "edge",
         "sectionId": "lb",
         "detail": "Routes public traffic to Frontend nginx."
@@ -78,8 +78,8 @@
       {
         "id": "frontend",
         "label": "Frontend nginx",
-        "x": 42,
-        "y": 25,
+        "x": 48,
+        "y": 27,
         "tone": "app",
         "sectionId": "frontend",
         "detail": "Serves the UI and proxies /api/* to Checkout API v4."
@@ -87,8 +87,8 @@
       {
         "id": "backend",
         "label": "Checkout API v4",
-        "x": 42,
-        "y": 45,
+        "x": 48,
+        "y": 50,
         "tone": "app",
         "sectionId": "backend",
         "detail": "Backend app receives excessive RPS and starts timing out."
@@ -96,8 +96,8 @@
       {
         "id": "redis-session",
         "label": "Redis Primary",
-        "x": 19,
-        "y": 45,
+        "x": 22,
+        "y": 27,
         "tone": "data",
         "sectionId": "redis",
         "detail": "Frontend session, cart and cache dependency."
@@ -105,8 +105,8 @@
       {
         "id": "postgres",
         "label": "PostgreSQL orders + outbox_events",
-        "x": 42,
-        "y": 68,
+        "x": 48,
+        "y": 75,
         "tone": "data",
         "sectionId": "postgres",
         "detail": "Checkout writes order rows and outbox_events in one transaction."
@@ -114,8 +114,8 @@
       {
         "id": "outbox",
         "label": "Outbox Worker",
-        "x": 42,
-        "y": 84,
+        "x": 48,
+        "y": 91,
         "tone": "queue",
         "sectionId": "outbox",
         "detail": "Reads unpublished outbox_events from PostgreSQL."
@@ -123,8 +123,8 @@
       {
         "id": "kafka",
         "label": "Kafka checkout-events",
-        "x": 62,
-        "y": 84,
+        "x": 70,
+        "y": 91,
         "tone": "queue",
         "sectionId": "kafka",
         "detail": "Receives checkout events from Outbox Worker."
@@ -132,8 +132,8 @@
       {
         "id": "payment",
         "label": "Payment Orchestrator",
-        "x": 68,
-        "y": 45,
+        "x": 73,
+        "y": 50,
         "tone": "app",
         "sectionId": "payment",
         "detail": "Downstream payment service retries when checkout requests time out."
@@ -141,8 +141,8 @@
       {
         "id": "psp",
         "label": "External PSP",
-        "x": 88,
-        "y": 45,
+        "x": 91,
+        "y": 50,
         "tone": "external",
         "sectionId": "psp",
         "detail": "External provider is healthy and not directly connected to Frontend."
@@ -150,8 +150,8 @@
       {
         "id": "observability",
         "label": "Observability",
-        "x": 86,
-        "y": 67,
+        "x": 84,
+        "y": 70,
         "tone": "control",
         "sectionId": "observability",
         "detail": "Prometheus/Grafana show RPS, 502, Redis latency and DB connections."
@@ -159,8 +159,8 @@
       {
         "id": "logging",
         "label": "Logging",
-        "x": 86,
-        "y": 80,
+        "x": 84,
+        "y": 82,
         "tone": "control",
         "sectionId": "observability",
         "detail": "Loki/ELK logs show nginx upstream timeouts and bot user agents."
